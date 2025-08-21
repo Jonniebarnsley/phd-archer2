@@ -19,27 +19,44 @@ running_jobs=$(squeue --noheader --format=%j --me)
 
 ENSEMBLE=$1
 PYTHON_ENV=$WORK/env # python envrionment using venv
-MAX_TIME=9990 # time at which a job should be considered complete
+MAX_TIME=30 # time at which a job should be considered complete
 
-# activate python environment
-source $PYTHON_ENV/bin/activate
+# Determine if input is a single run or ensemble directory
+if [[ $(basename "$ENSEMBLE") == run* && -d "$ENSEMBLE/plot" ]]; then
+    # Single run directory
+    run_dirs=("$ENSEMBLE")
+else
+    # Ensemble directory
+    run_dirs=($ENSEMBLE/run*)
+fi
 
 # iterate over ensemble members
-for run in "$ENSEMBLE/run*"; do
+for run in "${run_dirs[@]}"; do
 
+    # Check if plot directory exists
+    if [[ ! -d "$run/plot" ]]; then
+        echo "$run: no plot directory found"
+        continue
+    fi
+    
+    # Check if there are any plot files
+    if [[ ! "$(ls -A "$run/plot" 2>/dev/null)" ]]; then
+        echo "$run: plot directory is empty"
+        continue
+    fi
+    
     last_plotfile=$(ls "$run/plot" | tail -n 1)
-    years_complete=$(python $WORK/libs/get_timestep.py $run/plot/$last_plotfile)
+    years_complete=$(python $WORK/lib/get_time.py "$run/plot/$last_plotfile")
 
     if [ $years_complete -ge $MAX_TIME ]; then
         echo "$run complete!"
 
-    elif grep -q "$run" <<< "$running_jobs"; then
-        echo "$run running... $years_complete years done so far"
+    # Extract run number for job queue lookup
+    run_number=$(basename "$run")
+    elif grep -q "lasagne_$run_number" <<< "$running_jobs"; then
+        echo "$run_number running... $years_complete years done so far"
 
     else
         echo "$run has not completed but is also not running"
     fi
 done
-
-# deactivate python environment
-deactivate
