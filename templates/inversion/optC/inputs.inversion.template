@@ -1,75 +1,124 @@
-# domain details
+# --- Domain details ---
+# x, y, z domain sizes in km
 main.domain_size = 6144e+3 6144e+3 1.0e+3
+
+# 8km base resolution -> 6144/8 = 768 x 768 grid, with 24 vertical layers
 amr.num_cells = 768 768 24 # 8km 
 
-amr.is_periodic = 0 0 0
+# No wrap around boundaries in any direction
+amr.is_periodic = 0 0 0   # 0 - not periodic, 1 - periodic
+
+# sigma coordinate system for vertical layers in ice.
+# 0 - surface, 1 - base
+# higher resolution near the base where velocity gradient is steep
 amr.sigma = 0.0 0.0712603   0.14191442  0.21137662  0.27910062  0.3445959
   0.40744022  0.46728806  0.52387456  0.5770154   0.62660312  0.67260068
   0.71503302  0.75397751  0.78955403  0.82191523  0.85123747  0.87771266
   0.90154127  0.92292652  0.94206966  0.95916636  0.97440401  0.98795991
   1. 
   
-# bulk constitutive relation and parameters
-main.constitutiveRelation = L1L2
-L1L2.n = 4
-L1L2.layerCoarsening = 1
-L1L2.additionalVelocitySIAGradSLimit = 1.0e-3
-L1L2.effectiveViscositySIAGradSLimit = 1.0e-3
-L1L2.additionalVelocitySIAOnly = true
-amr.additional_velocity = false # false for inverse problem, true for forward
-main.rateFactor = patersonRate
-patersonRate.epsSqr0 = 1.0e-12
-patersonRate.A0_multiplier = 1.0e-5
 
-# geometry input data
+# --- Bulk constitutive relation ---
+# Glen's law with L1L2 constitutive relation and Arrhenius rate factor
+
+main.constitutiveRelation = L1L2
+L1L2.n = 3   # Glen's law exponent (fixed for this optC inversion)
+
+# During effective viscosity solve, coarsen vertical layers by factor of 2^k
+# when L1L2.layerCoarsening = k
+L1L2.layerCoarsening = 1  # coarsen by factor of 2
+
+# Limit steep slopes during viscosity solve for numerical stability.
+L1L2.additionalVelocitySIAGradSLimit = 1.0e-3   # 1m vertical per 1km horizontal
+L1L2.effectiveViscositySIAGradSLimit = 1.0e-3   # 1m vertical per 1km horizontal
+L1L2.additionalVelocitySIAOnly = true
+
+# BISICLES velocity comes in two components, a base velocity with du/dz = 0
+# and an additional velocity which is depth-dependant.
+# We turn this off for the inverse problem to save computation
+amr.additional_velocity = false # false - inversion, true - forward problem
+
+# Rate factor calculated using Arrhenius law
+main.rateFactor = patersonRate  # Cuffey and Paterson (2010)
+patersonRate.epsSqr0 = 1.0e-12  # small epsilon added to strain rate to avoid 
+# division by zero -> infinite viscosity
+
+# Fixed rate factor for this optC inversion
+patersonRate.A0_multiplier = 1.0
+
+
+# --- Input data ---
+# Read in initial geometry, friction, and temperature data
+
+# Geometry
 geometry.problem_type = LevelData
 inputLevelData.geometryFile = /work/n02/shared/jonnieb/data/BedMachine_antarctica_v3_bisicles_1km.2d.hdf5
 inputLevelData.thicknessName = thickness
 inputLevelData.topographyName = bed
 
-# friction input data
+# Friction input data
 geometry.beta_type = LevelData
 inputLevelData.frictionFile = /work/n02/shared/jonnieb/data/antarctica_bedmachine_inverse_1km.2d.hdf5 
 inputLevelData.frictionName = btrc
 
-# temperature input data 
+# Temperature
 temperature.type = LevelData
 inputLevelData.internalEnergyFile = /work/n02/shared/jonnieb/data/antarctica-bisicles-CTplusLW_8km.2d.hdf5
 inputLevelData.internalEnergyName = internalEnergy0000
-inputLevelData.readInternalEnergy = true
+inputLevelData.readInternalEnergy = true  # read internal energy instead of temperature
 
-# basal friction relation parameters
+
+# --- Basal friction ---
+# Linear sliding law for inverse problem
 main.basalFrictionRelation = powerLaw
 BasalFrictionPressureLimitedLaw.coefficient = 1.0
 BasalFrictionPressureLimitedLaw.basalFrictionRelation = powerLaw
 BasalFrictionPowerLaw.m = 1.0 # linear sliding law for inverse problem
 
-# physical constants
-constants.ice_density = 917.0
-constants.sea_water_density = 1027.0
 
-# surface mass balance
+# --- Physical constants ---
+constants.ice_density = 917.0  # kg/m^3
+constants.sea_water_density = 1027.0  # kg/m^3
+
+
+# --- Surface mass balance ---
+# Constant SMB derived from MAR 1980-2021 mean
 surfaceFlux.type = LevelData
-surfaceFlux.n = 1
-surfaceFlux.timeStep = 1.0e+10
+surfaceFlux.n = 1  # single time slice
+surfaceFlux.timeStep = 1.0e+10  # huge time step, i.e. no time dependence
 surfaceFlux.startTime = 0.0
 surfaceFlux.fileFormat = /work/n02/shared/jonnieb/data/antarctica.mon-SMB-MAR_ERA5-1980-2021.mean.smb.hdf5
 surfaceFlux.name = SMB
 
-# basal flux
+
+# --- Basal mass balance ---
 basalFlux.type = maskedFlux
+# Zero basal flux during inversion
 basalFlux.grounded.type = constantFlux
 basalFlux.grounded.flux_value = 0.0
 basalFlux.floating.type = constantFlux
 basalFlux.floating.flux_value = 0.0
 amr.grounding_line_proximity_scale = 1.0e+4
 amr.grounding_line_proximity_calc_type = 1
+
+# During the initialisation, we hold the ice shelves steady by adding a basal mass
+# balance term, bmb = div(u·H) - smb, resulting in dH/dt = 0.
 amr.floating_ice_stable = true
+
+# Can also hold the grounding line steady in a similar way. When ice grounded below
+# sea level drops below the floatation thickness, add an additional smb term which
+# fixes the grounding line position.
 amr.grounding_line_stable = true
 
-# calving
+
+# --- Calving ---
+# Prevent ice shelf advance by setting ice thickness to 0 in open ocean.
 CalvingModel.type = FixedFrontCalvingModel
-CalvingModel.min_thickness = 0.0
+CalvingModel.min_thickness = 0.0  # Still allows retreat
+
+
+# --- Numerics ---
+# Standard settings for velocity solve
 
 # velocity solve type -- 0 = Picard, 1 = JFNK
 amr.velocity_solver_type = 1
@@ -81,7 +130,7 @@ amr.initial_velocity_guess_type = 1 # linear PDE
 amr.initial_velocity_guess_const_mu = 2.9e+6
 amr.initial_velocity_guess_solver_type = 1 # JFNK
 
-#JFNK parameters
+# JFNK parameters
 JFNKSolver.vtopSafety = 0.95
 JFNKSolver.minPicardIterations = 3
 JFNKSolver.maxIter = 12
@@ -101,71 +150,93 @@ JFNKSolver.numMGIter = 1
 JFNKSolver.h = 0.025
 JFNKSolver.switchRate = 1.3
 
-# artificial drag ~ |coef.u|^power
-JFNKSolver.artificialDragCoef = 1.0e-4 # vels over 10kma-1 suppressed
+# Additional artificial drag term ~ |coef·u|^power.
+JFNKSolver.artificialDragCoef = 1.0e-4 # velocities over 10kma^-1 suppressed
 JFNKSolver.artificialDragPower = 8
 
-velocity_rhs.max_rhs_dx = 1.0e+9 # limit steep slopes
+# Limit driving stress in areas with steep slopes to avoid numerical instabilities.
+velocity_rhs.max_rhs_dx = 1.0e+9 # roughly corresponds to 100m ice cliff
 
-# eliminate remote ice
+
+# --- Eliminate remote ice ---
+# Searches for connecting "bridges" of ice between cells. Any ice only connected to 
+# the ice sheet by bridges below a certain thickness is removed.
 amr.eliminate_remote_ice = true
 amr.eliminate_remote_ice_max_iter = 16
-amr.eliminate_remote_ice_tol = 2.0
+amr.eliminate_remote_ice_tol = 2.0  # min thickness for ice to be considered connected
 amr.eliminate_remote_ice_after_regrid = true
+JFNKSolver.eliminateRemoteIceTol = 50.0
+JFNKSolver.eliminateRemoteIceMaxIter = 16
 
 # eliminate fast ice (disabled)
 JFNKSolver.eliminateFastIce = false
 JFNKSolver.eliminateFastIceSpeed = 5.0e+5
-JFNKSolver.eliminateRemoteIceTol = 50.0
-JFNKSolver.eliminateRemoteIceMaxIter = 16
 
-# time stepping
+
+# --- Time stepping ---
 main.maxTime = 0 # snapshot inversion
-main.maxStep = 100000
+main.maxStep = 100000  # terminate run if this many timesteps are reached
 amr.temporal_accuracy = 1
-amr.cfl = 0.25
+# cfl - Courant-Friedrichs-Lewy condition
+amr.cfl = 0.25  # timestep is 0.25 * dt_max where dt_max is determined by CFL
 amr.initial_cfl = 0.25  
 amr.max_dt_grow_factor = 2.0 
-amr.time_step_ticks = 0
+amr.time_step_ticks = 0  # if 1, use 'nice' timesteps, e.g. 1/8, 1/4, 1/2, 1, etc.
 
-# plotting options
-amr.plot_time_interval = 0.5
+
+# --- Plotting ---
+amr.plot_time_interval = 0.5  # save a plotfile every 0.5 years
 amr.plot_prefix = plot/plot.snapshot-inverse.@name.3lev
 
-# checkpoints
-amr.check_interval = 24
-amr.check_prefix = chk/chk.snapshot-inverse.@name.3lev
-amr.check_overwrite = 0
 
-# AMR mesh options
-amr.maxLevel = 10 			# finest level allowed in simulation
+# --- Checkpoints ---
+amr.check_interval = 24  # save a checkpoint every 24 timesteps
+amr.check_prefix = chk/chk.snapshot-inverse.@name.3lev
+amr.check_overwrite = 0  # 1 - overwrite existing checkpoint, 0 - don't overwrite
+
+
+# --- AMR mesh options ---
+amr.maxLevel = 10 # max levels of refinement
 amr.ref_ratio = 2 2 2 2 2 2 2 2 2 2 2
-amr.regrid_interval = 4000  # number of timesteps between regridding
+amr.tagCap = 2 # Finest level that can be tagged for refinement
+# Therefore 3 levels of refinement total, 8000->4000->2000->1000 m
+
+amr.regrid_interval = 4000  # very large – don't bother regridding during inversion
 amr.blockFactor = 16      	# block factor used in grid generation
-amr.fill_ratio = 0.85    	# how efficient are the grids
-amr.nestingRadius = 1    	# proper nesting radius required
-amr.tags_grow = 4        	# amount to buffer tags
-amr.tagCap = 2 				# 8000->4000->2000->1000 m
-amr.interpolate_zb = 0 		# go back to the IBC to regrid geometry
+amr.fill_ratio = 0.85    	  # how efficient are the grids
+amr.nestingRadius = 1    	  # proper nesting radius required
+amr.tags_grow = 4        	  # pad tagged regions with this many cells
+amr.interpolate_zb = 0 		  # don't go back to the IBC to regrid geometry
 amr.max_box_size = 32       # largest box length allowed
 
-# AMR tagging
-amr.tag_on_grad_velocity = 0
-amr.tag_grounding_line = 1
-amr.grounding_line_tagging_min_vel = 20.0
 
-amr.tag_vel_dx = 1
-amr.vel_dx_tagging_val = 5.0e+5
-amr.vel_dx_finest_level_grounded = 4
-amr.vel_dx_finest_level_floating = 3
+# --- AMR tagging ---
+# Tag regions of the ice sheet for refinement based on grounding line proximity
+# and absolute velocity (not velocity gradient).
+amr.tag_on_grad_velocity = 0  # don't tag based on velocity gradients
+
+amr.tag_grounding_line = 1    # tag based on proximity to grounding line
+amr.grounding_line_tagging_min_vel = 20.0  # min velocity for tagging
+
+amr.tag_vel_dx = 1  # tag when velocity * dx exceeds threshold
+amr.vel_dx_tagging_val = 5.0e+5  # threshold
+# dx = 8km -> threshold = 62.5 m/a
+# dx = 4km -> threshold = 125 m/a
+# dx = 2km -> threshold = 250 m/a
+# Can also set different tagging limits for grounded and floating ice.
+amr.vel_dx_finest_level_grounded = 4  # default -1 (no refinement)
+amr.vel_dx_finest_level_floating = 3  # default -1 (no refinement)
 
 amr.tag_thin_cavity = true # tag thin submarine cavities in attempt to refine pinning points
 amr.tag_thin_cavity_thickness = 50.0
 
-# misc options
+
+# --- Misc options ---
 amr.verbosity = 5
 
-# -- Inversion options --
+
+# --- Inversion options ---
+# Snapshot inversion: optimize C only (friction coefficient)
 
 amr.velocity_solver_type = 6 		# Inverse problem
 amr.velocity_solve_interval = 1 	# hopefully OK when relaxing geometry
@@ -173,60 +244,70 @@ amr.evolve_thickness = false		# snapshot inversion
 
 control.velMisfitType = speed 				# match observed speed (not velocity)
 control.minTimeBetweenOptimizations = 0.5	# time in years between (transient) inverse problems
-control.minLevelForOptimization = 3			# level of refinement
+control.minLevelForOptimization = 3			# Solve for fields at 1 km resolution
 
-control.dtTypical = 0.04
+control.dtTypical = 0.04  # Only affects filename suffixes.
+# e.g. time = 1.0 years, int(1.0 / 0.04) = 25 -> ctrl.snapshot-inverse.@name.000025
+
 control.writeInnerSteps = false
 control.outerStepFileNameBase = ctrl/ctrl.snapshot-inverse.@name.
-
-control.CGsaveStateFileNameBase = cg-chk/cg-chk.@name # prefix for state fies
-control.CGsaveStateInterval = 10
-
-
-# field of data expressing confidence in speed observations. 0 for no confidence
-control.velCoef.type = LevelData
-control.velCoef.fileFormat = /work/n02/shared/jonnieb/data/MEaSUREs_antarctica_v2_bisicles_1km.2d.hdf5
-control.velCoef.name = notnull # confidence
-control.velCoef.n = 4
-control.velCoef.startTime = 0.0
-control.velCoef.timeStep = 100.0
-control.velCoef.offset = 0
-control.velCoef.linearInterp = false
 
 # xVel used for speed observations when control.velMisfitType = speed
 control.xVel.type = LevelData
 control.xVel.fileFormat = /work/n02/shared/jonnieb/data/MEaSUREs_antarctica_v2_bisicles_1km.2d.hdf5
-control.xVel.name = spd # speed
+control.xVel.name = speed
 control.xVel.n = 4
 control.xVel.startTime = 0.0
 control.xVel.timeStep = 100.0
 control.xVel.offset = 0
 control.xVel.linearInterp = false
 
+# Field of data expressing confidence in speed observations.
+# linear scale between 1 - total confidence, 0.975 - high confidence
+# Anything below 0.975 is treated as 0.
+control.velCoef.type = LevelData
+control.velCoef.fileFormat = /work/n02/shared/jonnieb/data/MEaSUREs_antarctica_v2_bisicles_1km.2d.hdf5
+control.velCoef.name = not_slow_or_thin
+control.velCoef.n = 4
+control.velCoef.startTime = 0.0
+control.velCoef.timeStep = 100.0
+control.velCoef.offset = 0
+control.velCoef.linearInterp = false
+
 # Tikhonov regularization coefficients
 control.gradCsqRegularization = @aC
 control.gradMuCoefsqRegularization = @aPhi
 
-# initial guess
+# Set bounds on initial guesses for C and muCoef - imposed at the start of each
+# inverse problem.
 control.initialLowerC = 1.0
 control.initialUpperC = 1.0e+5
 control.initialLowerMuCoef = 1.0e-2
 control.initialUpperMuCoef = 1.10
 
-# some box constraints. 
+# Box constraints for C and muCoef during each inversion.
+# C0·exp(-5.0) < C < C0·exp(5.0)
+# muCoef0·exp(-2.0) < muCoef < muCoef0·exp(0.025)
+# Where C0, muCoef0 are the initial values of C and muCoef in each cell
 control.boundMethod = Projection
-control.lowerX0 = -5
+control.lowerX0 = -5.0
 control.upperX0 = 5.0
-control.lowerX1 = -3.0
-control.upperX1 = 0.025
+control.lowerX1 = -2.0
+control.upperX1 = 0.5
 
-# termination condition    
+# Termination condition    
+control.CGhang = 0.95			# terminate when ||fm(x)||^2/||fm_old(x)||^2 > CGhang
+control.CGtol = 1e-10 			# terminate when ||f'(x)||^2 < CGtol^2 * ||f'(x)||^2_init
+
+# Conjugate Gradient descent algorithm has 'inner' and 'outer' steps.
+# - inner steps: line search method to find optimum step size for outer step
+# - outer steps: take step along loss surface towards minimum
 control.writeInnerSteps = false
-control.CGmaxIter = 100 		# 100 iterations for snapshot inversion, 16 for transient
-control.CGhang = 1000			# deliberately high – termination instead determined by CGtol
-control.CGtol = 1e-3			# stop when ||f'(x)||^2 is less than CGtol^2 of its original value 
-control.CGsecantMaxIter = 20
+control.CGmaxIter = 24 		# max CG (outer) iterations per inverse problem
+control.CGsecantMaxIter = 8		# max secant (inner) iterations per CG iteration
 control.CGsecantParameter = 1.0e-7
+control.CGlineSearchMethod = 20 # 0 - secant, 1 bisection, 20 new secant
 
-control.optimizeX0 = true	# Optimise C
-control.optimizeX1 = false	# Don't optimise muCoef
+# Optimize C only - disable muCoef optimization
+control.optimizeX0 = true  # optimize w.r.t basal friction coefficient (C)
+control.optimizeX1 = false # don't optimize w.r.t effective viscosity coefficient (muCoef)
