@@ -3,31 +3,37 @@
 main.poutBaseName = pout.@ID
 
 
-##########################   DOMAIN DETAILS   ##########################
-
+# --- Domain details ---
+# x, y, z domain sizes in km
 main.domain_size = 6144e+3 6144e+3 1.0e+3   # km
+
+# Base resolution depends on @NCELLS: 768 -> 8km, 1536 -> 4km, etc.
 amr.num_cells = @NCELLS @NCELLS 10          # (x, y, vertical layers)
-amr.is_periodic = 0 0 0
+
+# No wrap around boundaries in any direction
+amr.is_periodic = 0 0 0   # 0 - not periodic, 1 - periodic
 
 # vertical layer depths (0 = surface, 1 = base)
+# Fewer layers than inversion runs for computational efficiency
 amr.sigma = 0.0 0.1663 0.3179 0.4547 0.5768 0.6842 0.7768 0.8547 0.9179 0.9663 1.0000
 
 
-#############   BULK CONSITUTIVE RELATION AND PARAMETERS   #############
-
+# --- Bulk constitutive relation and parameters ---
 # Use L1L2 approximation to the Stokes equations
+
 main.constitutiveRelation = L1L2
-L1L2.delta = 1.0e-1
+L1L2.delta = 1.0e-1  # regularization parameter
 
 # Choose temperature dependant rate factor A(T) as in Cuffey and Paterson (2010)
 main.rateFactor = patersonRate
-patersonRate.epsSqr0 = 1.0e-12
+patersonRate.epsSqr0 = 1.0e-12  # small epsilon added to strain rate to avoid 
+# division by zero -> infinite viscosity
 
 # Physical constants
-constants.ice_density = 918
+constants.ice_density = 918  # kg/m^3
 
-##########################  BED TOPOGRAPHY  ############################
 
+# --- Bed topography ---
 # BedMachine-2
 geometry.problem_type = LevelData
 inputLevelData.geometryFile = /nobackup/earjbar/data/ant-minbed64-s-geometry-1km.2d.hdf5
@@ -35,14 +41,13 @@ inputLevelData.thicknessName = thck
 inputLevelData.topographyName = topg
 
 
-############################  SLIDING LAW   ############################
-
+# --- Sliding law ---
 # Bed friction calculated by Python script
 geometry.beta_type = Python
 PythonBasalFriction.module = basal_friction.@ID
 PythonBasalFriction.function = bedFricCalc
 
-# Setup Tsai sliding law
+# Setup Tsai sliding law (pressure-limited law)
 main.basalFrictionRelation = pressureLimitedLaw
 BasalFrictionPressureLimitedLaw.model = Tsai
 BasalFrictionPressureLimitedLaw.coefficient = 0.6
@@ -58,8 +63,7 @@ thin_ice_drag.extra = 10.0 # extra linear drag to impose on thin ice, even if fl
 thin_ice_drag.thickness = 10.0 # max thickness of thin ice
 
 
-##########################  THERMODYNAMICS  ############################
-
+# --- Thermodynamics ---
 # Activate thermodynamics component (Aschwanden et al, 2012; doi: 10.3189/2012JoG11J088)
 amr.isothermal = false
 
@@ -77,15 +81,14 @@ surfaceHeatBoundaryData.function = surface_temperature
 
 # Geothermal flux (in J/a/m^2)
 basalHeatBoundaryData.type = LevelData
-basalHeatBoundaryData.n = 1
-basalHeatBoundaryData.timeStep = 1.0e+10
+basalHeatBoundaryData.n = 1  # single time slice
+basalHeatBoundaryData.timeStep = 1.0e+10  # huge time step, i.e. no time dependence
 basalHeatBoundaryData.startTime = 0.0
 basalHeatBoundaryData.fileFormat = /nobackup/earjbar/data/Heatflux_ShapiroRitzwoller2004_antarctica_plismip_8kmx8km_768.2d.hdf5
 basalHeatBoundaryData.name = Hflux
 
 
-##########################  HYDROLOGY  ############################
-
+# --- Hydrology ---
 # rate for till water to drain (into putative ground water system)
 tillWaterDrainFactor.type = constantFlux
 tillWaterDrainFactor.flux_value = 0.3
@@ -94,29 +97,26 @@ tillWaterDrainFactor.flux_value = 0.3
 ColumnThermodynamics.till_water_max = 2.0 # (default 4.0 m)
 
 
-########################  SURFACE MASS BALANCE  ########################
-
-#surface fluxes, have calculated SMB
-#surface fluxes
+# --- Surface mass balance ---
+# Surface fluxes calculated from climate forcing
 surfaceFlux.type = LevelData
-surfaceFlux.n = 1
-surfaceFlux.timeStep = 1.0e+10
+surfaceFlux.n = 1  # single time slice
+surfaceFlux.timeStep = 1.0e+10  # huge time step, i.e. no time dependence
 surfaceFlux.startTime = 0.0
 surfaceFlux.fileFormat = smb.hdf5
 surfaceFlux.name = smb
 
 
-########################  BASAL MELT  ########################
-
-# no basal flux for grounded ice
+# --- Basal melt ---
+# No basal flux for grounded ice
 basalFlux.type = maskedFlux
 basalFlux.grounded.type = constantFlux
 basalFlux.grounded.flux_value = 0.0
 
-# try making product flux
+# For floating ice, use product of two fluxes (ramp × ocean forcing)
 basalFlux.floating.type = productFlux
 
-# use ismip ramp to ease up melting, as opposed to sudden forcing
+# Use ISMIP ramp to ease up melting, as opposed to sudden forcing
 basalFlux.floating.flux1.type = pythonFlux
 basalFlux.floating.flux1.module = ismip_ramp
 basalFlux.floating.flux1.function = ramp
@@ -130,7 +130,7 @@ basalFlux.floating.flux2.basin_file = ../../run_data/imbie2_basin_mask_8km.2d.hd
 basalFlux.floating.flux2.basin_var_name = basin_mask_0000
 basalFlux.floating.flux2.n_basin_mask = 16
 
-# ocean forcing
+# Ocean forcing
 basalFlux.floating.flux2.file_format = @ISMIP_OCEAN
 basalFlux.floating.flux2.name = thermal_forcing_0000
 basalFlux.floating.flux2.anomaly = false
@@ -138,20 +138,18 @@ basalFlux.floating.flux2.start_time = 0
 basalFlux.floating.flux2.start_year = 0
 basalFlux.floating.flux2.end_year = 10000
 
-# no freezing in ice-free regions
+# No freezing in ice-free regions
 basalFlux.openSea.type = zeroFlux
 
 
-###########################  CALVING MODEL  ############################
-
+# --- Calving model ---
 # Fixed front calving model maintains zero ice thickness in regions that initially have 
 # no ice and also prevents ice thickness from dropping below min_thickness
 CalvingModel.type = FixedFrontCalvingModel
 CalvingModel.min_thickness = 1.0    # (m)
 
 
-########################  GIA SCHEME  ########################
-
+# --- GIA scheme ---
 topographyFlux.type  = buelerGIA
 topographyFlux.nlayers = 2
 topographyFlux.visc = 5e21 @UMV
@@ -163,8 +161,7 @@ topographyFlux.includeElas = true
 topographyFlux.oceanLoad = true
 
 
-#############################  NUMERICS  ###############################
-
+# --- Numerics ---
 #initial guess
 amr.do_initial_velocity_guess = 1
 amr.do_initial_velocity_solve = 1
@@ -213,8 +210,7 @@ JFNKSolver.artificialDragPower = 8
 velocity_rhs.max_rhs_dx = 1.0e+9 # stops unphysical flow of ice cliffs
 
 
-########################  ADAPTIVE MESH OPTIONS  ########################
-
+# --- Adaptive mesh options ---
 amr.maxLevel = 10 # finest level allowed in simulation
 amr.ref_ratio = 2 2 2 2 2 2 2 2 2 2 2
 amr.regrid_interval = 8     # number of timesteps between regridding
@@ -251,8 +247,7 @@ amr.verbosity = 5
 #amr.floating_ice_basal_flux_is_min_dhdt = true
 
 
-##########################  PLOTTING OPTIONS  ##########################
-
+# --- Plotting options ---
 # Basic plot options
 amr.plot_time_interval = 30.0
 amr.plot_prefix = plotfiles/plot.@ID.
