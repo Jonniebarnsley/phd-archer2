@@ -1,0 +1,92 @@
+#!/bin/bash
+#SBATCH --job-name=lasagne_@name
+#SBATCH -o output/o.%j
+#SBATCH -e error/e.%j
+#SBATCH --partition=standard
+#SBATCH --nodes=2
+#SBATCH --ntasks-per-node=128
+#SBATCH --time=24:00:00
+#SBATCH --qos=standard
+#SBATCH --account=n02-NES007229
+#SBATCH --hint=nomultithread
+#SBATCH --distribution=block:block
+
+# set options
+export FI_MR_CACHE_MAX_COUNT=0		# Disable memory registration cache
+export CH_OUTPUT_INTERVAL=0			# Reduces the number of pout files to 1
+
+# set paths
+export WORK=/mnt/lustre/a2fs-work2/work/n02/shared/jonnieb
+export BISICLES=$WORK/bisicles/invprob_confidence
+export BISEXEC=$BISICLES/code/exec2D/driver2d.Linux.64.CC.ftn.OPT.MPI.PETSC.GNU.ex
+export BISINPT=inputs.lasagne.@name
+export JOB=job.lasagne.@name
+
+# set constants
+export INCR=3	# time increment per job (in years)
+export END=15	# target end year of simulation
+
+# load python
+module load cray-python	
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$BISICLES/code/libamrfile
+export PYTHONPATH=$PYTHONPATH:$BISICLES/code/libamrfile/python/AMRFile
+
+# load utils
+source $WORK/lib/utils.sh
+
+start=$(date +%s)
+echo Start time is `date`
+
+
+# make directories
+cd $SLURM_SUBMIT_DIR
+mkdir -p plot chk ctrl hist pout output error
+
+
+# update pout
+echo "" >> $BISINPT
+echo "main.poutBaseName = pout/pout.lasagne_@name.$SLURM_JOB_ID" >> $BISINPT
+
+
+# update last checkpoint
+lastchk=$(ls -tr chk/chk.*.2d.hdf5 2>/dev/null | tail -n 1)
+if [ -n "$lastchk" ]; then
+	echo "amr.restart_file = $lastchk" >> "$BISINPT"
+    echo "amr.restart_set_time=false" >> "$BISINPT"
+fi
+
+
+# update maxTime
+lastplot=$(ls -tr plot/plot.*.2d.hdf5 2>/dev/null | tail -n 1)
+if [ -n "$lastplot" ]; then
+	lasttime=$(python $WORK/lib/get_time.py $lastplot)
+else
+	lasttime=0
+fi
+newtime=$((lasttime + INCR))
+maxtime=$(min $newtime $END)
+echo "main.maxTime = $maxtime" >> $BISINPT
+
+
+# run BISICLES
+echo "running BISICLES..."
+srun $BISEXEC $BISINPT
+echo "BISICLES done"
+
+
+# tidy up
+for i in 00 02 03 05 06 08 09 11 12 14 15; do
+	rm ctrl/ctrl.*$i.2d.hdf5
+done
+
+# queue next job
+if [ $maxtime -lt $END ] && [ ! -e core ]; then
+	sbatch $JOB
+fi
+
+
+end=$(date +%s)
+echo End time is `date`
+echo Time elapsed: $(time_elapsed $start $end)
+
+
