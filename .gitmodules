@@ -11,3 +11,7 @@
 [submodule "ocean_forcing/ismip6"]
 	path = ocean_forcing/ismip6
 	url = git@github.com:Jonniebarnsley/ismip6-antarctic-ocean-forcing.git
+[submodule "bisicles/invprob_confidence"]
+	path = bisicles/invprob_confidence
+	url = git@github.com:Jonniebarnsley/bisicles.git
+	branch = invprob_sliding
