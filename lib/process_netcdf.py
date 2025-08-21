@@ -11,7 +11,9 @@ import numpy as np
 import xarray as xr
 from xarray import DataArray, Dataset
 from pathlib import Path
+import gc
 from mpi4py import MPI # needed to run the MPI routines in amrio on archer2
+
 # NB: amrfile needs the BISICLES AMRfile directory added to PYTHONPATH and the libamrfile directory
 # added to LD_LIBRARY_PATH – see my .bashrc for an example
 from amrfile import io as amrio
@@ -19,6 +21,8 @@ from amrfile import io as amrio
 
 MAX_TIME = 2300     # cuts off data at any time above this value
 FILL_VALUE = -9999  # fill NaNs in netcdf with this value
+DEFAULT_LEV = 0  # default level of refinement
+CHUNKS = {'x': 192, 'y': 192, 'time': 147}
 
 # specs for encoding data.
 specs = {
@@ -94,6 +98,7 @@ def generate_netcdf(variable: str, dir: Path, outnc: Path, lev: int=0, overwrite
 
     '''
     Generates a netcdf of the given variable from the output files of a BISICLES run.
+    Memory-efficient version that builds the dataset incrementally.
 
     :param variable:    variable name
     :param dir:         path to output file directory
@@ -113,40 +118,68 @@ def generate_netcdf(variable: str, dir: Path, outnc: Path, lev: int=0, overwrite
         print(f"No plotfiles found in {dir}")
         return
 
-    times = []
-    timeslices = []
-    total = len(files)
-    for i, file in enumerate(files):
-        
-        # print filename and number to keep track of progress
-        print(f'({i+1}/{total}) {file.name}')
-
-        # get datasets from files and associated time coordinates
-        time, timeslice = extract_field(variable, str(file), lev=lev)
-        times.append(time)
-        timeslices.append(timeslice)
-
-    # concatenate along the time axis
-    concatenated = xr.concat(timeslices, dim='time')
-    ds = concatenated.assign_coords(time=times)
-    ds = ds.sel(time=slice(0, MAX_TIME)) # trim off any leftover after time adjustments
-
-    # get enconding info
+    print(f"Processing {total} files...")
+    
+    # Get encoding info
     precision = specs[variable]['prec']
     dtype = specs[variable]['dtype']
+    variable_clean = variable.replace('/', '')
     
-    variable = variable.replace('/', '')
-    ds[variable].encoding.update({'zlib': True})
+    # Process files and build dataset incrementally
+    growing_ds = None
+    processed_count = 0
     
-    # save netcdf
-    print(f"generating {outnc}...")
-    ds.to_netcdf(outnc, encoding={variable: {
-        'zlib'          : True, 
-        'complevel'     : 6, 
-        'dtype'         : dtype,
-        'scale_factor'  : precision, 
-        '_FillValue'    : FILL_VALUE
-        }})
+    for i, file in enumerate(files, 1):
+        print(f'Processing ({i}/{total}) {file.name}')
+        
+        # Extract data from current file
+        time, current_ds = extract_field(variable, str(file), lev=lev)
+        
+        # Check if time is within range
+        if time > MAX_TIME:
+            print(f'  Skipping {file.name} (time {time} > {MAX_TIME})')
+            del current_ds
+            gc.collect()
+            continue
+        
+        # Assign time coordinate to the dataset
+        current_ds = current_ds.expand_dims('time')
+        current_ds = current_ds.assign_coords(time=[time])
+        
+        # Initialize or append to the growing dataset
+        if growing_ds is None:
+            growing_ds = current_ds
+            processed_count = 1
+        else:
+            growing_ds = xr.concat([growing_ds, current_ds], dim='time')
+            processed_count += 1
+        
+        # Clear memory immediately
+        del current_ds
+        gc.collect()
+    
+    if growing_ds is None:
+        print("No files found within time range.")
+        return
+    
+    print(f"Successfully processed {processed_count} files within time range.")
+
+    growing_ds = growing_ds.chunk(CHUNKS)
+
+    # Apply final encoding
+    growing_ds[variable_clean].encoding.update({
+        'zlib': True,
+        'complevel': 6,
+        'dtype': dtype,
+        'scale_factor': precision,
+        '_FillValue': FILL_VALUE
+    })
+    
+    # Save the final dataset
+    print(f"Generating {outnc}...")
+    growing_ds.to_netcdf(outnc)
+    
+    print(f"Successfully created {outnc}")
 
 def get_outfile_path(variable: str, plotdir: Path, savedir: Path, lev: int) -> Path:
 
@@ -196,13 +229,13 @@ def main(args) -> None:
 
     main() takes those arguments, generates a path for the output netcdf based on the
     ensemble directory structure [see get_outfile_path()], then processes and saves
-    the netcdf.
+    the netcdf using memory-efficient incremental processing.
     '''
     
     variable = args.variable
     directory = Path(args.directory)
     savedir = Path(args.savedir)
-    lev = args.lev if args.lev else 0
+    lev = args.lev if args.lev else DEFAULT_LEV
 
     outfile_path = get_outfile_path(variable, directory, savedir, lev)
     generate_netcdf(variable, directory, outfile_path, lev=lev)
@@ -219,7 +252,8 @@ if __name__== '__main__':
     parser.add_argument("savedir", type=str, help="Path to save directory")
 
     # add optional arguments
-    parser.add_argument("--lev", type=int, help="level of refinement")
+    parser.add_argument("--lev", type=int, default=DEFAULT_LEV, help="level of refinement")
 
     args = parser.parse_args()
+    print(f'running on args: {args.variable}, {args.directory}, {args.savedir}')
     main(args)
