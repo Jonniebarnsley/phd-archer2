@@ -40,7 +40,7 @@ echo Start time is `date`
 
 # make directories
 cd $SLURM_SUBMIT_DIR
-mkdir -p plot chk ctrl hist pout output error
+mkdir -p plot chk ctrl pout output error
 
 
 # update pout
@@ -78,17 +78,18 @@ echo "BISICLES done"
 if [ $maxtime -gt 0 ]; then
 	# delete ctrl files generated during relaxation (when Cwshelf and muCoef are fixed)
 	rm ctrl/ctrl.lasagne.@name.03lev.*00.2d.hdf5
+fi
 file_num=$(printf "%02d" $maxtime)
 # make netcdfs
 source $WORK/env/bin/activate
 for lev in 0 3; do
 	for var in Cwshelf muCoef; do
-		filepath="ncs/${lev}lev/$var/run001_${var}_${lev}lev_${file_num}.nc"
-		srun --nodes=1 --ntasks=1 --ntasks-per-node=1 --exact --mem=64G \
+		filepath="ncs/${lev}lev/$var/@name_${var}_${lev}lev_${file_num}.nc"
+		srun --nodes=1 --ntasks=1 --ntasks-per-node=1 --exact --mem=128G \
 			python -u $WORK/lib/process_ctrl.py $var ctrl -f $filepath --lev $lev &
 	done
+	wait
 done
-wait
 
 
 # queue next job
