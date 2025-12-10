@@ -4,7 +4,6 @@
 #SBATCH -e error/process_vars_0lev.%j.e
 #SBATCH --partition=standard
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=5
 #SBATCH --time=00:20:00
 #SBATCH --qos=short
 #SBATCH --account=n02-NES007229
@@ -28,11 +27,7 @@ start=$(date +%s)
 echo Start time is `date`
 
 cd $SLURM_SUBMIT_DIR
-for var in thickness Z_base Z_surface xVel yVel; do
-	srun --nodes=1 --ntasks=1 --ntasks-per-node=1 --exact --mem=32G \
-		python -u $WORK/lib/process_netcdf.py --lev 0 $var @PLOTDIR @NCDIR &
-done
-wait 
+python -u $WORK/lib/process_plot.py --lev 0 @PLOTDIR @NCDIR thickness Z_base xVel yVel Z_surface 
 
 end=$(date +%s)
 echo End time is `date`
