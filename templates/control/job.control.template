@@ -1,0 +1,88 @@
+#!/bin/bash
+#SBATCH --job-name=@name
+#SBATCH -o output/o.%j
+#SBATCH -e error/e.%j
+#SBATCH --partition=standard
+#SBATCH --qos=taskfarm
+#SBATCH --nodes=2
+#SBATCH --ntasks-per-node=128
+#SBATCH --time=24:00:00
+#SBATCH --account=n02-NES007229
+#SBATCH --hint=nomultithread
+#SBATCH --distribution=block:block
+
+# set options
+export FI_MR_CACHE_MAX_COUNT=0		# Disable memory registration cache
+export CH_OUTPUT_INTERVAL=0			# Reduces the number of pout files to 1
+
+# set paths
+export WORK=/mnt/lustre/a2fs-work2/work/n02/shared/jonnieb/
+export BISVERS=$WORK/bisicles/invprob_sliding
+export BISEXEC=$BISVERS/code/exec2D/driver2d.Linux.64.CC.ftn.OPT.MPI.PETSC.GNU.ex
+export BISINPT=inputs.control.@name
+export JOB=job.control.@name
+
+# set times
+export START=2007	# start year of simulation
+export END=2100		# end year of simulation
+export INCR=31		# time increment per job (in years)
+
+# load python
+module load cray-python/3.9.13.1
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$BISVERS/code/libamrfile
+export PYTHONPATH=$PYTHONPATH:$BISVERS/code/libamrfile/python/AMRFile # if using amrfile
+export PYTHONPATH=$PYTHONPATH:`pwd` # if using python interface
+
+# load some helpful functions
+source $WORK/lib/utils.sh
+
+start=$(date +%s)
+echo Start time is `date`
+
+
+# make directories
+cd $SLURM_SUBMIT_DIR
+mkdir -p plot chk pout output error
+
+
+# update pout
+echo "" >> $BISINPT
+echo "main.poutBaseName = pout/pout.control.$SLURM_JOB_ID" >> $BISINPT
+
+
+# update last checkpoint
+lastchk=$(ls -tr chk/chk.*.2d.hdf5 2>/dev/null | tail -n 1)
+if [ -n "$lastchk" ]; then
+	echo "amr.restart_file = $lastchk" >> "$BISINPT"
+    echo "amr.restart_set_time=false" >> "$BISINPT"
+fi
+
+
+# update maxTime
+lastplot=$(ls -tr plot/plot.*.2d.hdf5 2>/dev/null | tail -n 1)
+if [ -n "$lastplot" ]; then
+	lasttime=$(python $WORK/lib/get_time.py $lastplot)
+else
+	lasttime=$START
+fi
+newtime=$((lasttime + INCR))
+newtime=$(min $newtime $END)
+maxtime=$((newtime - START)) # offset for reading by BISICLES
+echo "main.maxTime = $maxtime" >> $BISINPT
+
+
+# run BISICLES
+echo "running BISICLES..."
+srun $BISEXEC $BISINPT
+echo "BISICLES done"
+
+
+# queue next job
+if [ $newtime -lt $END ] && [ ! -e core ]; then
+	sbatch $JOB
+fi
+
+
+end=$(date +%s)
+echo End time is `date`
+echo Time elapsed: $(time_elapsed $start $end)

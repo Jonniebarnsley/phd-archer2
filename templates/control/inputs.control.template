@@ -1,0 +1,251 @@
+# --- Domain details ---
+# x, y, z domain sizes in km
+main.domain_size = 6144e+3 6144e+3 1.0e+3
+
+# 8km base resolution -> 6144/8 = 768 x 768 grid, with 24 vertical layers
+amr.num_cells = 768 768 24 # 8km
+
+# No wrap around boundaries in any direction
+amr.is_periodic = 0 0 0   # 0 - not periodic, 1 - periodic
+
+# sigma coordinate system for vertical layers in ice.
+# 0 - surface, 1 - base
+# higher resolution near the base where velocity gradient is steep
+amr.sigma = 0.0 0.0712603   0.14191442  0.21137662  0.27910062  0.3445959
+  0.40744022  0.46728806  0.52387456  0.5770154   0.62660312  0.67260068
+  0.71503302  0.75397751  0.78955403  0.82191523  0.85123747  0.87771266
+  0.90154127  0.92292652  0.94206966  0.95916636  0.97440401  0.98795991
+  1.
+
+
+# --- Bulk constitutive relation ---
+# Glen's law with L1L2 constitutive relation and Arrhenius rate factor
+
+main.constitutiveRelation = L1L2
+L1L2.n = @n   # Glen's law exponent
+
+# During effective viscosity solve, coarsen vertical layers by factor of 2^k
+# when L1L2.layerCoarsening = k
+L1L2.layerCoarsening = 1  # coarsen by factor of 2
+
+# Limit steep slopes in solvers for numerical stability.
+L1L2.additionalVelocitySIAGradSLimit = 1.0e-3   # 1m vertical per 1km horizontal
+L1L2.effectiveViscositySIAGradSLimit = 1.0e-3   # 1m vertical per 1km horizontal
+
+L1L2.additionalVelocitySIAOnly = true
+
+# BISICLES velocity comes in two components, a base velocity with du/dz = 0
+# and an additional velocity which is depth-dependant.
+# We turn this off for computational efficiency
+amr.additional_velocity = true
+amr.diffusion_treatment = implicit
+
+# Rate factor calculated using Arrhenius law
+main.rateFactor = patersonRate  # Cuffey and Paterson (2010)
+patersonRate.epsSqr0 = 1.0e-12  # small epsilon added to strain rate to avoid 
+# division by zero -> infinite viscosity
+
+# When perturbing Glen's exponent, we set a reference stress T_ref at which strain is
+# equal for all n. This gives us A(n) = A(n=3)*τ^(3-n).
+# Therefore add a prefactor to A, A0_multiplier = τ^(3-n)
+# For these experiments, we choose τ = 100,000 kPa
+patersonRate.A0_multiplier = @A0_multiplier
+
+
+# --- Input data ---
+# Read in initial geometry, friction, and temperature data (from inversion results)
+
+# Geometry (from initialization/inversion)
+geometry.problem_type = LevelData
+inputLevelData.geometryFile = /work/n02/shared/jonnieb/data/init/ppe_attempt_2/init.@name.2d.hdf5
+inputLevelData.thicknessName = thickness
+inputLevelData.topographyName = Z_base
+
+# Friction input data (from inversion)
+geometry.beta_type = LevelData
+inputLevelData.frictionFile = /work/n02/shared/jonnieb/data/init/ppe_attempt_2/init.@name.2d.hdf5
+inputLevelData.frictionName = C_m
+
+# Stiffness input data (from inversion)
+muCoefficient.type = LevelData
+inputLevelData.muCoefFile = /work/n02/shared/jonnieb/data/init/ppe_attempt_2/init.@name.2d.hdf5
+inputLevelData.muCoefName = muCoef
+
+# Temperature
+temperature.type = LevelData
+inputLevelData.internalEnergyFile = /work/n02/shared/jonnieb/data/antarctica-bisicles-CTplusLW_8km.2d.hdf5
+inputLevelData.internalEnergyName = internalEnergy0000
+inputLevelData.readInternalEnergy = true  # read internal energy instead of temperature
+
+
+# --- Basal friction ---
+# Basal friction relation parameters (TSAI pressure-limited law)
+#main.basalFrictionRelation = pressureLimitedLaw			# Tsai (2015) or Leguy (2014)
+#BasalFrictionPressureLimitedLaw.model = Tsai			# Tb = min{ |Tb'|, C * N} * u/|u| where Tb' is any basalFrictionRelation
+#BasalFrictionPressureLimitedLaw.coefficient = 0.5		# Coulomb coefficient
+#BasalFrictionPressureLimitedLaw.basalFrictionRelation = powerLaw
+#BasalFrictionPowerLaw.m = @m
+
+# Basal friction relation parameters (JOUGHIN regularised coulomb law)
+main.basalFrictionRelation = powerLaw
+BasalFrictionPowerLaw.m = @m
+BasalFrictionPowerLaw.fastSlidingSpeed = @uf
+BasalFrictionPowerLaw.includeEffectivePressure = false
+
+
+# --- Physical constants ---
+# Ice density (kg/m^3)
+constants.ice_density = 917.0
+# Sea water density (kg/m^3)
+constants.sea_water_density = 1027.0
+
+# --- Surface mass balance ---
+# Just MAR background smb for control simulations
+surfaceFlux.type = LevelData
+surfaceFlux.n = 1  # single time slice
+surfaceFlux.timeStep = 1.0e+10  # huge time step, i.e. no time dependence
+surfaceFlux.startTime = 0.0
+#surfaceFlux.fileFormat = /work/n02/shared/jonnieb/data/antarctica.mon-SMB-MAR_ERA5-1980-2021.mean.smb.hdf5
+surfaceFlux.fileFormat = /work/n02/shared/jonnieb/data/synthetic_smb/ppe_@name_synthetic_smb.2d.hdf5
+surfaceFlux.name = smb_synthetic
+
+# --- Basal flux ---
+# Boundary conditions for basal ice flux
+basalFlux.type = zeroFlux
+
+# During the control, we hold the ice shelves steady by adding a basal mass
+# balance term, bmb = div(u·H) - smb, resulting in dH/dt = 0.
+amr.floating_ice_stable = true
+
+# --- Calving ---
+# Calving model for ice shelf retreat
+CalvingModel.type = FixedFrontCalvingModel
+CalvingModel.min_thickness = 10.0
+
+# --- GIA ---
+# Bueler's GIA model for ice sheet deformation
+topographyFlux.type = buelerGIA
+topographyFlux.nlayers = 2
+topographyFlux.visc = 5e21 @UMV # lower, upper mantle viscosity
+topographyFlux.thk = 200000
+topographyFlux.flex = 13e23
+topographyFlux.dt = 0.03125
+topographyFlux.pad = 2
+topographyFlux.includeElas = true
+topographyFlux.oceanLoad = true
+
+# --- Velocity solver ---
+# 0 = Picard, 1 = JFNK
+amr.velocity_solver_type = 1
+
+# Initial guess
+amr.do_initial_velocity_guess = 1
+amr.do_initial_velocity_solve = 1
+amr.initial_velocity_guess_type = 1 # linear PDE
+amr.initial_velocity_guess_const_mu = 2.9e+6
+amr.initial_velocity_guess_solver_type = 1 # JFNk
+
+#JFNK parameters
+JFNKSolver.vtopSafety = 0.95
+JFNKSolver.minPicardIterations = 6
+JFNKSolver.maxIter = 2
+JFNKSolver.maxIter_init = 16
+JFNKSolver.absTol = 1.0e+5
+JFNKSolver.relTol = 1.0e-3
+JFNKSolver.solverType = 0 # Relax solver
+JFNKSolver.RelaxRelTol = 1.0e-3
+JFNKSolver.RelaxHang = 0.99
+JFNKSolver.maxRelaxIter = 15
+JFNKSolver.normType = 0
+JFNKSolver.verbosity = 5
+JFNKSolver.vtopRelaxTol = 0.005
+JFNKSolver.vtopRelaxMinIter = 8
+JFNKSolver.numMGSmooth = 8
+JFNKSolver.numMGIter = 1
+JFNKSolver.h = 0.025
+JFNKSolver.switchRate = 1.3
+
+JFNKSolver.minStepFactor = 0.25
+amr.velocity_solve_interval = 1
+
+# artificial drag ~ |coef.u|^power
+JFNKSolver.artificialDragCoef = 1.0e-4
+JFNKSolver.artificialDragPower = 8
+
+thin_ice_drag.extra = 10.0 # extra linear drag to impose on thin ice, even if floating
+thin_ice_drag.thickness = 10.0 # max thickness of thin ice
+
+velocity_rhs.max_rhs_dx = 1.0e+9 # limit steep slopes
+
+# eliminate remote ice
+amr.eliminate_remote_ice = true
+amr.eliminate_remote_ice_max_iter = 40
+amr.eliminate_remote_ice_tol = 1.0
+amr.max_advection_speed = 2.0e+4
+
+# eliminate fast ice (disabled)
+JFNKSolver.eliminateFastIce = false
+JFNKSolver.eliminateFastIceEdgeOnly = false
+JFNKSolver.eliminateFastIceSpeed = 8.0e+4
+
+# --- Time stepping ---
+# Maximum simulation time (years)
+main.maxTime = 500
+# Maximum number of time steps
+main.maxStep = 100000
+
+amr.restart_set_time = false
+amr.restart_time = 0
+amr.offsetTime = 2007
+amr.temporal_accuracy = 1
+amr.cfl = 0.25  
+amr.initial_cfl = 0.25
+amr.max_dt_grow_factor = 2.0
+amr.time_step_ticks = 0
+
+# --- Plotting options ---
+# Time interval for plotting (years)
+amr.plot_time_interval = 1.0
+amr.restart_set_time = false
+amr.restart_time = 0
+amr.offsetTime = 2007
+amr.plot_prefix = plot/plot.@name.
+amr.reduced_plot = true
+
+# --- Checkpoints ---
+# Interval for saving checkpoint files (time steps)
+amr.check_interval = 384
+amr.check_prefix = chk/chk.@name.
+amr.check_overwrite = 0
+
+# --- AMR mesh options ---
+# Maximum level of refinement in the AMR grid
+amr.maxLevel = 10 			# finest level allowed in simulation
+amr.ref_ratio = 2 2 2 2 2 2 2 2 2 2 2
+amr.regrid_interval = 8  	# number of timesteps between regridding
+amr.blockFactor = 16      	# block factor used in grid generation
+amr.fill_ratio = 0.85    	# how efficient are the grids
+amr.nestingRadius = 1    	# proper nesting radius required
+amr.tags_grow = 4        	# amount to buffer tags
+amr.tagSubsetBoxesFile = /work/n02/shared/jonnieb/data/tagSubsetBoxes.txt
+amr.tagCap = 2
+amr.interpolate_zb = 1 		# *do not* go back to the IBC to regrid geometry
+amr.max_box_size = 64       # largest box length allowed
+
+#AMR tagging
+amr.tag_on_grad_velocity = 0
+amr.tag_grounding_line = 1
+amr.grounding_line_tagging_min_vel = 10.0
+amr.grounding_line_tagging_max_basal_friction_coef = 250000.0
+
+amr.tag_on_grounded_laplacian_velocity = 1
+amr.lap_vel_tagging_val = 1500
+amr.lap_vel_tagging_max_basal_friction_coef = 250000.0
+
+amr.tag_vel_dx = 1
+amr.vel_dx_tagging_val = 3.0e+5
+amr.vel_dx_finest_level_grounded = 3
+amr.vel_dx_finest_level_floating = 1
+
+# misc options
+amr.verbosity = 5
