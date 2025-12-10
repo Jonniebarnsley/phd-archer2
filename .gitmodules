@@ -15,3 +15,6 @@
 	path = bisicles/invprob_confidence
 	url = git@github.com:Jonniebarnsley/bisicles.git
 	branch = invprob_sliding
+[submodule "lib/esgf_download"]
+	path = lib/esgf_download
+	url = git@github.com:Jonniebarnsley/esgf-download.git
