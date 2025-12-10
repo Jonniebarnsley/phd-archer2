@@ -8,6 +8,7 @@ module load cray-fftw
 
 # bisicles and petsc directories
 export WORK=/work/n02/shared/${USER}
+export SCRATCH=/mnt/lustre/a2fs-nvme/work/n02/shared/jonnieb
 export BISICLES_HOME=$WORK/bisicles
 export PETSC_DIR=$BISICLES_HOME/petsc
 
