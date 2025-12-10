@@ -24,7 +24,7 @@ from mpi4py import MPI # needed to run the MPI routines in amrio on archer2
 
 # NB: amrfile needs the BISICLES AMRfile directory added to PYTHONPATH and the libamrfile directory
 # added to LD_LIBRARY_PATH – see my .bashrc for an example
-from amrfile import io as amrio
+from bisiclesio import BisiclesFile
 
 class Processor:
 
@@ -50,32 +50,14 @@ class Processor:
         }
         return specs
 
-    def extract_field(self, hdf5_file: Path, order: int=0) -> Dataset:
-        """Extract a 2D field from an hdf5 file at the specified refinement level"""
-
-        # read hdf5
-        amrID = amrio.load(str(hdf5_file))
-        lo, hi = amrio.queryDomainCorners(amrID, self.lev)
-        x0, y0, field = amrio.readBox2D(amrID, self.lev, lo, hi, self.variable, order)
-
-        # make Dataset
-        ds = Dataset({
-            self.variable: DataArray(
-                data = field,
-                dims = ['y', 'x'],
-                coords = {'x': x0, 'y': y0},
-            )})
-        amrio.free(amrID)
-
-        return ds
-
     def batch_iterations(self, iter_file_pairs: list[tuple[int, Path]]) -> Dataset:
         """Concatenate all iterations in an inverse problem along the iteration dimension"""
 
         batched = None
         for iteration, file in iter_file_pairs:
             print(f'  Processing iteration {iteration}: {file.name}')
-            ds = self.extract_field(file)
+            with BisiclesFile(file) as bfile:
+                ds = bfile.read_dataset(self.variable, lev=self.lev)
             ds = ds.expand_dims('iteration')
             ds = ds.assign_coords(iteration=[iteration])
 
@@ -151,7 +133,7 @@ def get_time_and_iteration(file: Path):
     match = pattern.search(file.name)
     if not match:
         raise ValueError(f"No 6+6 digit block found in {file}")
-    dt_typical = 0.1 # see BISICLES inputs
+    dt_typical = 1 # see BISICLES inputs
     time = float(match.group(1)) * dt_typical
     iteration = int(match.group(2))
     
