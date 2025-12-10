@@ -9,43 +9,31 @@ from amrfile import io as amrio
 
 def convert_C(C: DataArray, xVel: DataArray, yVel: DataArray, m: float=1.0, uf: float=None) -> DataArray:
 
-    '''
-    Inverse problem is solved using a simple linear sliding law, based on a power 
-    relationship between velocity u and drag tau:
+    """
+    Inverse problem is solved using a simple linear sliding law
 
-    tau = C|u|^(m-1) * u                                                (1)
+    tau = C * u
 
-    or equivalently      
+    We would like to convert the inverted field for Weertman coefficient C into an 
+    equivalent field for any sliding law such that drag is unchanged upon 
+    initialisation.
 
-    |tau| = C|u|^m                                                      (2)
+    For a power law sliding law, this can be done by solving the equation that 
+    equates both friction regimes.
 
-    with exponent m = 1. We would like to convert the inverted field for Weertman 
-    coefficient C into an equivalent field for any m such that drag is unchanged 
-    upon initialisation.
-
-    This can be done by solving the equation that equates both friction regimes.
-
-    C|u| = C_m|u|^m                                                     (3)
-    C_m = C|u|^(1-m)                                                    (4)
-
-    However, this will result in C_m << 1 where |u| << 1. To avoid this, we instead
-    convert using:
-
-    C_m = C * [1+|u|^(1-m)]                                             (5)
-
-    When |u| << 1, this ensures that C_m > C.
-    When |u| >> 1, this approaches eq. (4)
+    C * u = C_m * |u|^(m-1) * u     
+    C_m = C * |u|^(1-m)
 
     An optional parameter uf (fast sliding speed) may also be set so that C_m is
-    converted into the field for a regularised Coulomb sliding law like that of 
+    converted into the field C_f for a regularised Coulomb sliding law like that of 
     Joughin et al (2019):
 
-    tau = C_f * [ uf*|u| / (|u|+uf) ]^m * (u / |u|)                     (6)
+    tau = C_f * [uf*|u| / (|u|+uf)]^m * (u / |u|)
 
     N.B. this form differs from slightly from that of Joughin et al (2019), which
     is written:
 
-    tau = C_j * [ |u| / (|u|+uf) ]^(1/m) * (u / |u|)                    (7)
+    tau = C_j * [|u| / (|u|+uf)]^(1/m) * (u / |u|)
 
     However, these are equivalent with m = 1/m (different convention for exponent)
     and C_f = C_j / uf^m. BISICLES chooses this form so that the units for C_f
@@ -54,13 +42,12 @@ def convert_C(C: DataArray, xVel: DataArray, yVel: DataArray, m: float=1.0, uf: 
     Again, equating basal drag with that of our power law yields the conversion 
     formula:
 
-    C_f = C_m * [ |u|/uf + 1 ]^m                                        (8)
-    '''
+    C_f = C_m * [|u|/uf + 1]^m
+    """
 
     print(f'Converting C into equivalent field for m={m}...')
     u = np.hypot(xVel, yVel)
-    epsilon = 0 # small value to prevent zero bed friction
-    C_m = C * (epsilon + u)**(1.0-m)
+    C_m = C * u **(1.0-m)
     
     if uf is None:
         return C_m
@@ -99,7 +86,6 @@ def extract_data(file: str, lev: int=3, order: int=0) -> Dataset:
             )
 
     amrio.free(amrID)
-    
     return ds
 
 def main(args) -> None:
