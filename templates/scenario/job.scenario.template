@@ -24,7 +24,7 @@ export JOB=job.@SCENARIO.@name
 
 # set times
 export START=2007	# start year of simulation
-export END=2010		# end year of simulation
+export END=2300		# end year of simulation
 export INCR=20		# time increment per job (in years)
 
 # load python

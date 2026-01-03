@@ -19,7 +19,7 @@ amr.sigma = 0.0 0.0712603   0.14191442  0.21137662  0.27910062  0.3445959
 
 
 # --- Bulk constitutive relation ---
-# Glen's law with L1L2 constitutive relation and Arrhenius rate factor
+# Glen's law with L1L2 constitutive relation and Paterson rate factor
 
 main.constitutiveRelation = L1L2
 L1L2.n = @n   # Glen's law exponent
@@ -28,12 +28,14 @@ L1L2.n = @n   # Glen's law exponent
 # when L1L2.layerCoarsening = k
 L1L2.layerCoarsening = 1  # coarsen by factor of 2
 
-# Limit steep slopes in solvers for numerical stability.
+# Try to avoid high-velocity single-cell crumple zones
+amr.additional_velocity = true
+amr.diffusion_treatment = implicit
 L1L2.additionalVelocitySIAOnly = true
 L1L2.additionalVelocitySIAGradSLimit = 1.0e-3   # 1m vertical per 1km horizontal
 L1L2.effectiveViscositySIAGradSLimit = 1.0e-3   # 1m vertical per 1km horizontal
 
-# Rate factor calculated using Arrhenius law
+# Rate factor calculated using Paterson law
 main.rateFactor = patersonRate  # Cuffey and Paterson (2010)
 patersonRate.epsSqr0 = 1.0e-12  # small epsilon added to strain rate to avoid 
 # division by zero -> infinite viscosity
@@ -52,7 +54,7 @@ patersonRate.A0_multiplier = @A0_multiplier
 geometry.problem_type = LevelData
 inputLevelData.geometryFile = /work/n02/shared/jonnieb/data/init/ppe/init.@name.2d.hdf5
 inputLevelData.thicknessName = thickness
-inputLevelData.topographyName = corrected_bed
+inputLevelData.topographyName = Z_base
 
 # Friction input data (from inversion)
 geometry.beta_type = LevelData
@@ -72,6 +74,8 @@ inputLevelData.readInternalEnergy = true  # read internal energy instead of temp
 
 
 # --- Basal friction ---
+# Choose between Tsai or Regularised Coulomb laws
+
 # Basal friction relation parameters (TSAI pressure-limited law)
 # main.basalFrictionRelation = pressureLimitedLaw			# Tsai (2015) or Leguy (2014)
 # BasalFrictionPressureLimitedLaw.model = Tsai			# Tb = min{ |Tb'|, C * N} * u/|u| where Tb' is any basalFrictionRelation
@@ -87,10 +91,8 @@ BasalFrictionPowerLaw.includeEffectivePressure = false
 
 
 # --- Physical constants ---
-# Ice density (kg/m^3)
-constants.ice_density = 917.0
-# Sea water density (kg/m^3)
-constants.sea_water_density = 1027.0
+constants.ice_density = 917.0 # kg/m^3
+constants.sea_water_density = 1027.0 # kg/m^3
 
 # --- Surface mass balance ---
 # Background and anomaly SMB fluxes
@@ -104,14 +106,14 @@ surfaceFlux.x.startTime = 0.0
 surfaceFlux.x.fileFormat = /work/n02/shared/jonnieb/data/synthetic_smb/ppe_@name_synthetic_smb.2d.hdf5
 surfaceFlux.x.name = smb_synthetic
 
-surfaceFlux.b = 0.0
+surfaceFlux.b = 1.0
 surfaceFlux.y.type = LevelData
 surfaceFlux.y.n = 294
 surfaceFlux.y.timeStep = 1.0
 surfaceFlux.y.startTime = 2007
 surfaceFlux.y.offset = 2007
-surfaceFlux.y.fileFormat = /work/n02/shared/jonnieb/data/smb/@SCENARIO/@model/smb_anomaly_@model_@SCENARIO_8km_%04d.2d.hdf5
-surfaceFlux.y.name = smb_anomaly_
+surfaceFlux.y.fileFormat = /work/n02/shared/jonnieb/data/smb/@SCENARIO/@model/smb_anomaly_@model_@SCENARIO_%04d.2d.hdf5
+surfaceFlux.y.name = smb_anomaly
 
 # --- Basal flux ---
 # Boundary conditions for basal ice flux
@@ -141,10 +143,8 @@ amr.floating_ice_basal_flux_is_dhdt = true
 
 # --- Calving ---
 # Calving model for ice shelf retreat
-CalvingModel.type = CompositeCalvingModel
-CalvingModel.nElements = 1 
-CalvingModel.element0.type = FixedFrontCalvingModel
-CalvingModel.element0.min_thickness = 10.0
+CalvingModel.type = FixedFrontCalvingModel
+CalvingModel.min_thickness = 10.0  # Still allows retreat
 
 # --- GIA ---
 # Bueler's GIA model for ice sheet deformation
@@ -158,8 +158,11 @@ topographyFlux.pad = 2
 topographyFlux.includeElas = true
 topographyFlux.oceanLoad = true
 
-# --- Velocity solver ---
-# 0 = Picard, 1 = JFNK
+# --- Numerics ---
+# Mostly standard settings, although I have bumped up the number of Picard iterations
+# since it seems to performs better than JFNK for whole-continent problems.
+
+# Velocity solve type -- 0 = Picard, 1 = JFNK
 amr.velocity_solver_type = 1
 
 # Initial guess
@@ -171,17 +174,17 @@ amr.initial_velocity_guess_solver_type = 1 # JFNk
 
 #JFNK parameters
 JFNKSolver.vtopSafety = 0.95
-JFNKSolver.minPicardIterations = 6
+JFNKSolver.minPicardIterations = 100
 JFNKSolver.maxIter = 2
 JFNKSolver.maxIter_init = 16
 JFNKSolver.absTol = 1.0e+5
 JFNKSolver.relTol = 1.0e-3
 JFNKSolver.solverType = 0 # Relax solver
-#JFNKSolver.solverType = 4 # PETSc solver
+JFNKSolver.solverType = 4 # PETSc solver
 JFNKSolver.RelaxRelTol = 1.0e-3
-JFNKSolver.RelaxHang = 0.99
-JFNKSolver.maxRelaxIter = 15
-JFNKSolver.normType = 0
+JFNKSolver.RelaxHang = 0.95
+JFNKSolver.maxRelaxIter = 20
+JFNKSolver.normType = 2
 JFNKSolver.verbosity = 5
 JFNKSolver.vtopRelaxTol = 0.005
 JFNKSolver.vtopRelaxMinIter = 8
@@ -193,94 +196,96 @@ JFNKSolver.switchRate = 1.3
 JFNKSolver.minStepFactor = 0.25
 amr.velocity_solve_interval = 1
 
-# artificial drag ~ |coef.u|^power
-JFNKSolver.artificialDragCoef = 1.0e-4
-JFNKSolver.artificialDragPower = 10
+# Additional artificial drag term ~ |coef·u|^power.
+JFNKSolver.artificialDragCoef = 1.0e-4 # velocities over 10kma^-1 suppressed
+JFNKSolver.artificialDragPower = 8
 
 thin_ice_drag.extra = 10.0 # extra linear drag to impose on thin ice, even if floating
 thin_ice_drag.thickness = 10.0 # max thickness of thin ice
 
 velocity_rhs.max_rhs_dx = 1.0e+9 # limit steep slopes
 
-# eliminate remote ice
+# --- Eliminate remote ice ---
+# Searches for connecting "bridges" of ice between cells. Any ice only connected to 
+# the ice sheet by bridges below a certain thickness is removed.
 amr.eliminate_remote_ice = true
-amr.eliminate_remote_ice_max_iter = 40
-amr.eliminate_remote_ice_tol = 1.0
-amr.max_advection_speed = 2.0e+4
+amr.eliminate_remote_ice_max_iter = 16
+amr.eliminate_remote_ice_tol = 2.0  # min thickness for ice to be considered connected
+amr.eliminate_remote_ice_after_regrid = true
 
-# eliminate fast ice (disabled)
+# --- Eliminate fast ice ---
+# Delete ice that travels faster than a given threshold
 JFNKSolver.eliminateFastIce = true
-JFNKSolver.eliminateFastIceEdgeOnly = true
-JFNKSolver.eliminateFastIceSpeed = 1.0e+5
+JFNKSolver.eliminateFastIceEdgeOnly = false
+JFNKSolver.eliminateFastIceSpeed = 2.5e+4 # m a-1 (yields min timestep of ~0.01 yr)
 
 # --- Time stepping ---
 # Maximum simulation time (years)
-main.maxTime = 500
-# Maximum number of time steps
-main.maxStep = 100000
-
-amr.restart_set_time = false
-amr.restart_time = 0
-amr.offsetTime = 2007
+main.maxTime = 0  # increment this in job script
+main.maxStep = 100000 # big number – terminate based on time, not steps
 amr.temporal_accuracy = 1
-amr.cfl = 0.25  
+amr.cfl = 0.25  # timestep is 0.25 * dt_max (Courant-Friedrichs-Lewy)
 amr.initial_cfl = 0.25
 amr.max_dt_grow_factor = 2.0
-amr.time_step_ticks = 0
+amr.time_step_ticks = false # if true, use 'nice' timesteps, e.g. 1/8, 1/4, 1/2, 1, etc.
 
-# --- Plotting options ---
-# Time interval for plotting (years)
-amr.plot_time_interval = 1.0
 amr.restart_set_time = false
 amr.restart_time = 0
 amr.offsetTime = 2007
-amr.plot_prefix = plot/plot.@SCENARIO_@name.
 
-# Variables to write to file
+# --- Plotting ---
+# Time interval for plotting (years)
+amr.plot_time_interval = 1.0
+amr.plot_prefix = plot/plot.@SCENARIO_@name.
 amr.reduced_plot = true
-amr.write_thickness_sources = false
-amr.write_internal_energy = false
-amr.write_mask = false
-amr.write_flux_velocities = false
-amr.write_layer_velocities = false
-amr.write_solver_rhs = false
-amr.write_viscous_tensor = false
-amr.write_dHDt = false
 
 # --- Checkpoints ---
 # Interval for saving checkpoint files (time steps)
-amr.check_interval = 512
+amr.check_interval = 256
 amr.check_prefix = chk/chk.@SCENARIO_@name.
-amr.check_overwrite = 0
+amr.check_overwrite = false
 
 # --- AMR mesh options ---
 # Maximum level of refinement in the AMR grid
 amr.maxLevel = 10 			# finest level allowed in simulation
 amr.ref_ratio = 2 2 2 2 2 2 2 2 2 2 2
+amr.tagCap = 2  # Finest level that can be tagged for refinement
+# Therefore 3 levels of refinement total, 8000->4000->2000->1000 m
+
 amr.regrid_interval = 8  	# number of timesteps between regridding
 amr.blockFactor = 16      	# block factor used in grid generation
 amr.fill_ratio = 0.85    	# how efficient are the grids
 amr.nestingRadius = 1    	# proper nesting radius required
 amr.tags_grow = 4        	# amount to buffer tags
 amr.tagSubsetBoxesFile = /work/n02/shared/jonnieb/data/tagSubsetBoxes.txt
-amr.tagCap = 2
-amr.interpolate_zb = 1 		# *do not* go back to the IBC to regrid geometry
-amr.max_box_size = 64       # largest box length allowed
 
-#AMR tagging
-amr.tag_on_grad_velocity = 0
-amr.tag_grounding_line = 1
-amr.grounding_line_tagging_min_vel = 10.0
-amr.grounding_line_tagging_max_basal_friction_coef = 250000.0
+amr.interpolate_zb = 0 		# *do not* go back to the IBC to regrid geometry
+amr.max_box_size = 64     # largest box length allowed
+
+# --- AMR tagging ---
+# Tag regions of the ice sheet for refinement based on grounding line proximity
+# and absolute velocity (not velocity gradient).
+amr.tag_on_grad_velocity = 0  # don't tag based on velocity gradients
+
+amr.tag_grounding_line = 1    # tag based on proximity to grounding line
+amr.grounding_line_tagging_min_vel = 20.0
+amr.grounding_line_proximity_calc_type = 1 # 0 - linear, 1 - quadratic
+
+amr.tag_vel_dx = 1  # tag when velocity * dx exceeds threshold
+amr.vel_dx_tagging_val = 5.0e+5 # threshold
+# dx = 8km -> threshold = 62.5 m/a
+# dx = 4km -> threshold = 125 m/a
+# dx = 2km -> threshold = 250 m/a
+# Can also set different tagging limits for grounded and floating ice.
+amr.vel_dx_finest_level_grounded = 3
+amr.vel_dx_finest_level_floating = 1
+
+amr.tag_thin_cavity = true # tag thin submarine cavities in attempt to refine pinning points
+amr.tag_thin_cavity_thickness = 50.0
 
 amr.tag_on_grounded_laplacian_velocity = 1
 amr.lap_vel_tagging_val = 1500
 amr.lap_vel_tagging_max_basal_friction_coef = 250000.0
-
-amr.tag_vel_dx = 1
-amr.vel_dx_tagging_val = 3.0e+5
-amr.vel_dx_finest_level_grounded = 3
-amr.vel_dx_finest_level_floating = 1
 
 # misc options
 amr.verbosity = 5
