@@ -17,14 +17,9 @@ amr.sigma = 0.0 0.0712603   0.14191442  0.21137662  0.27910062  0.3445959
   0.90154127  0.92292652  0.94206966  0.95916636  0.97440401  0.98795991
   1. 
 
-# BISICLES velocity comes in two components, a base velocity with du/dz = 0
-# and an additional velocity which is depth-dependant.
-# We turn this off for the inverse problem to save computation
-amr.additional_velocity = false   # false - inversion, true - forward problem
-
 
 # --- Bulk constitutive relation ---
-# Glen's law with L1L2 constitutive relation and Arrhenius rate factor
+# Glen's law with L1L2 constitutive relation and Paterson rate factor
 
 main.constitutiveRelation = L1L2
 L1L2.n = @n   # Glen's law exponent
@@ -33,10 +28,14 @@ L1L2.n = @n   # Glen's law exponent
 # when L1L2.layerCoarsening = k
 L1L2.layerCoarsening = 1  # coarsen by factor of 2
 
-# Limit steep slopes during viscosity solve for numerical stability.
+# Try to avoid high-velocity single-cell crumple zones
+amr.additional_velocity = true
+amr.diffusion_treatment = implicit
+L1L2.additionalVelocitySIAOnly = true
+L1L2.additionalVelocitySIAGradSLimit = 1.0e-3   # 1m vertical per 1km horizontal
 L1L2.effectiveViscositySIAGradSLimit = 1.0e-3   # 1m vertical per 1km horizontal
 
-# Rate factor calculated using Arrhenius law
+# Rate factor calculated using Paterson law
 main.rateFactor = patersonRate  # Cuffey and Paterson (2010)
 patersonRate.epsSqr0 = 1.0e-12  # small epsilon added to strain rate to avoid 
 # division by zero -> infinite viscosity
@@ -53,13 +52,13 @@ patersonRate.A0_multiplier = @A0_multiplier
 
 # Geometry
 geometry.problem_type = LevelData
-inputLevelData.geometryFile = /work/n02/shared/jonnieb/data/BedMachine_antarctica_v3_bisicles_1km.2d.hdf5
-inputLevelData.thicknessName = thickness
-inputLevelData.topographyName = bed
+inputLevelData.geometryFile = /work/n02/shared/jonnieb/data/inversion_inputs.2d.hdf5
+inputLevelData.thicknessName = thk
+inputLevelData.topographyName = topg
 
 # Friction
 geometry.beta_type = LevelData
-inputLevelData.frictionFile = /work/n02/shared/jonnieb/data/matts_inversion_inputs.2d.hdf5
+inputLevelData.frictionFile = /work/n02/shared/jonnieb/data/inversion_inputs.2d.hdf5
 inputLevelData.frictionName = btrc
 
 # Temperature
@@ -91,39 +90,24 @@ surfaceFlux.name = SMB
 
 
 # --- Basal mass balance ---
-basalFlux.type = maskedFlux
-# Zero basal flux during inversion
-basalFlux.grounded.type = constantFlux
-basalFlux.grounded.flux_value = 0.0
-basalFlux.floating.type = constantFlux
-basalFlux.floating.flux_value = 0.0
-
-# During the initialisation, we hold the ice shelves steady by adding a basal mass
-# balance term, bmb = div(u·H) - smb, resulting in dH/dt = 0.
-amr.floating_ice_stable = true
-
-# Can also hold the grounding line steady in a similar way. When ice grounded below
-# sea level drops below the floatation thickness, add an additional smb term which
-# fixes the grounding line position.
-
-# However, in my experience, this can lead to crashing some runs and, for various
-# other reasons, we've disabled it for now.
-#amr.grounding_line_stable = true
+# Hold ice shelves steady
+basalFlux.type = zeroFlux
+amr.floating_ice_basal_flux_is_dhdt = true
 
 # --- Calving ---
 # Prevent ice shelf advance by setting ice thickness to 0 in open ocean.
 CalvingModel.type = FixedFrontCalvingModel
-CalvingModel.min_thickness = 0.0  # Still allows retreat
+CalvingModel.min_thickness = 10.0  # Still allows retreat
 
 
 # --- Numerics ---
 # Mostly standard settings, although I have bumped up the number of Picard iterations
 # since it seems to performs better than JFNK for whole-continent problems.
 
-# velocity solve type -- 0 = Picard, 1 = JFNK
+# Velocity solve type -- 0 = Picard, 1 = JFNK
 amr.velocity_solver_type = 1
 
-# initial guess 
+# Initial guess 
 amr.do_initial_velocity_guess = 1
 amr.do_initial_velocity_solve = 1
 amr.initial_velocity_guess_type = 1 # linear PDE
@@ -150,9 +134,15 @@ JFNKSolver.numMGIter = 1
 JFNKSolver.h = 0.025
 JFNKSolver.switchRate = 1.3
 
+JFNKSolver.minStepFactor = 0.25
+amr.velocity_solve_interval = 1
+
 # Additional artificial drag term ~ |coef·u|^power.
 JFNKSolver.artificialDragCoef = 1.0e-4 # velocities over 10kma^-1 suppressed
 JFNKSolver.artificialDragPower = 8
+
+thin_ice_drag.extra = 10.0 # extra linear drag to impose on thin ice, even if floating
+thin_ice_drag.thickness = 10.0 # max thickness of thin ice
 
 # Limit driving stress in areas with steep slopes to avoid numerical instabilities.
 velocity_rhs.max_rhs_dx = 1.0e+9 # roughly corresponds to 100m ice cliff
@@ -167,26 +157,31 @@ amr.eliminate_remote_ice_tol = 2.0  # min thickness for ice to be considered con
 amr.eliminate_remote_ice_after_regrid = true
 
 
+# --- Eliminate fast ice ---
+# Delete ice that travels faster than a given threshold
+JFNKSolver.eliminateFastIce = true
+JFNKSolver.eliminateFastIceEdgeOnly = false
+JFNKSolver.eliminateFastIceSpeed = 2.5e+4 # m a-1 (yields min timestep of ~0.01 yr)
+
 # --- Time stepping ---
 main.maxTime = 0  # increment this in job script
-main.maxStep = 100000  # terminate run if this many timesteps are reached
+main.maxStep = 100000  # big number – terminate based on time, not steps
 amr.temporal_accuracy = 1
-# cfl - Courant-Friedrichs-Lewy condition
-amr.cfl = 0.25  # timestep is 0.25 * dt_max where dt_max is determined by CFL
+amr.cfl = 0.25  # timestep is 0.25 * dt_max (Courant-Friedrichs-Lewy)
 amr.initial_cfl = 0.25  
 amr.max_dt_grow_factor = 2.0
-amr.time_step_ticks = 0  # if 1, use 'nice' timesteps, e.g. 1/8, 1/4, 1/2, 1, etc.
+amr.time_step_ticks = false  # if true, use 'nice' timesteps, e.g. 1/8, 1/4, 1/2, 1, etc.
 
 
 # --- Plotting ---
 amr.plot_time_interval = 0.2  # save a plotfile every 0.2 years
 amr.plot_prefix = plot/plot.lasagne.@name.3lev
-
+amr.reduced_plot = true
 
 # --- Checkpoints ---
 amr.check_interval = 32  # save a checkpoint every 32 timesteps
 amr.check_prefix = chk/chk.lasagne.@name.3lev
-amr.check_overwrite = 0  # 1 - overwrite existing checkpoint, 0 - don't overwrite
+amr.check_overwrite = false
 
 
 # --- AMR mesh options ---
@@ -200,8 +195,10 @@ amr.blockFactor = 16      	# block factor used in grid generation
 amr.fill_ratio = 0.85    	  # how efficient are the grids
 amr.nestingRadius = 1    	  # proper nesting radius required
 amr.tags_grow = 4        	  # pad tagged regions with this many cells
+amr.tagSubsetBoxesFile = /work/n02/shared/jonnieb/data/tagSubsetBoxes.txt
+
 amr.interpolate_zb = 0 		  # don't go back to the IBC to regrid geometry
-amr.max_box_size = 32       # largest box length allowed
+amr.max_box_size = 64       # largest box length allowed
 
 
 # --- AMR tagging ---
@@ -220,10 +217,14 @@ amr.vel_dx_tagging_val = 5.0e+5  # threshold
 # dx = 2km -> threshold = 250 m/a
 # Can also set different tagging limits for grounded and floating ice.
 amr.vel_dx_finest_level_grounded = 3  # default -1 (no refinement)
-amr.vel_dx_finest_level_floating = 3  # default -1 (no refinement)
+amr.vel_dx_finest_level_floating = 1  # default -1 (no refinement)
 
 amr.tag_thin_cavity = true # tag thin submarine cavities in attempt to refine pinning points
 amr.tag_thin_cavity_thickness = 50.0
+
+amr.tag_on_grounded_laplacian_velocity = 1
+amr.lap_vel_tagging_val = 1500
+amr.lap_vel_tagging_max_basal_friction_coef = 250000.0
 
 # --- Misc options ---
 amr.verbosity = 5
@@ -246,7 +247,6 @@ amr.velocity_solver_type = 6 		  # Inverse problem
 amr.velocity_solve_interval = 1 	# Solve velocity every timestep
 amr.evolve_thickness = true			  # Lasagne inversion
 
-
 control.velMisfitType = speed 				    # Match observed speed (not velocities)
 control.minTimeBetweenOptimizations = 1		# Time in years between inverse problems
 control.minLevelForOptimization = 3			  # Solve inverse problem after refinement
@@ -258,16 +258,16 @@ control.dtTypical = 1  # save ctrl files every 1 year of relaxation
 # linear scale between 1 - total confidence, 0.975 - high confidence
 # Anything below 0.975 is treated as 0.
 control.velCoef.type = LevelData
-control.velCoef.fileFormat = /work/n02/shared/jonnieb/data/MEaSUREs_antarctica_v2_bisicles_1km.2d.hdf5
-control.velCoef.name = notnull
+control.velCoef.fileFormat = /work/n02/shared/jonnieb/data/inversion_inputs.2d.hdf5
+control.velCoef.name = umodc
 control.velCoef.n = 1 # single time slice
 control.velCoef.timeStep = 1.0e+10  # huge time step, i.e. no time dependence
 control.thicknessThreshold = 10.0   # confidence is 0 for ice thinner than this
 
 # xVel used for speed observations when control.velMisfitType = speed
 control.xVel.type = LevelData
-control.xVel.fileFormat = /work/n02/shared/jonnieb/data/MEaSUREs_antarctica_v2_bisicles_1km.2d.hdf5
-control.xVel.name = speed
+control.xVel.fileFormat = /work/n02/shared/jonnieb/data/inversion_inputs.2d.hdf5
+control.xVel.name = umod
 control.xVel.n = 1
 control.xVel.timeStep = 1.0e+10
 
@@ -300,10 +300,11 @@ control.writeInnerSteps = false
 control.CGlineSearchMethod = 20   	# 0 - secant, 1 - bisection, 20 - new secant
 control.CGsecantMaxIter = 8	    	# max secant (inner) iterations per CG iteration
 control.CGsecantParameter = 1.0e-7
+control.rankRedBlack = true
 
 # Termination condition
 # Allows for quite a bit of up and down in the loss surface, but not too much.
-control.CGmaxIter = 32	  	# max CG (outer) iterations per inverse problem
+control.CGmaxIter = 16	  	# max CG (outer) iterations per inverse problem
 control.CGhang = 5			# terminate when ||fm(x)||^2/||fm_old(x)||^2 > CGhang
 control.CGtol = 1e-10		# terminate when ||f'(x)||^2 < CGtol^2 * ||f'(x)||^2_init
 # CGtol extremely low -> nearly always reach max iterations.

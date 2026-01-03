@@ -6,7 +6,7 @@
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=128
 #SBATCH --time=24:00:00
-#SBATCH --qos=standard
+#SBATCH --qos=taskfarm
 #SBATCH --account=n02-NES007229
 #SBATCH --hint=nomultithread
 #SBATCH --distribution=block:block
@@ -27,7 +27,7 @@ export INCR=1	# time increment per job (in years)
 export END=15	# target end year of simulation
 
 # load python
-module load cray-python	
+module load cray-python/3.9.13.1
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$BISICLES/code/libamrfile
 export PYTHONPATH=$PYTHONPATH:$BISICLES/code/libamrfile/python/AMRFile
 
@@ -37,16 +37,13 @@ source $WORK/lib/utils.sh
 start=$(date +%s)
 echo Start time is `date`
 
-
 # make directories
 cd $SLURM_SUBMIT_DIR
 mkdir -p plot chk ctrl pout output error
 
-
 # update pout
 echo "" >> $BISINPT
 echo "main.poutBaseName = pout/pout.lasagne_@name.$SLURM_JOB_ID" >> $BISINPT
-
 
 # update last checkpoint
 lastchk=$(ls -tr chk/chk.*.2d.hdf5 2>/dev/null | tail -n 1)
@@ -54,7 +51,6 @@ if [ -n "$lastchk" ]; then
 	echo "amr.restart_file = $lastchk" >> "$BISINPT"
     echo "amr.restart_set_time=false" >> "$BISINPT"
 fi
-
 
 # update maxTime
 lastplot=$(ls -tr plot/plot.*.2d.hdf5 2>/dev/null | tail -n 1)
@@ -67,39 +63,18 @@ else
 fi
 echo "main.maxTime = $maxtime" >> $BISINPT
 
-
 # run BISICLES
 echo "running BISICLES..."
 srun $BISEXEC $BISINPT
 echo "BISICLES done"
 
-
-# postprocess ctrl files after every inverse problem to save disk space and memory
-if [ $maxtime -gt 0 ]; then
-	# delete ctrl files generated during relaxation (when Cwshelf and muCoef are fixed)
-	rm ctrl/ctrl.lasagne.@name.03lev.*00.2d.hdf5
-fi
-file_num=$(printf "%02d" $maxtime)
-# make netcdfs
-source $WORK/env/bin/activate
-for lev in 0 3; do
-	for var in Cwshelf muCoef; do
-		filepath="ncs/${lev}lev/$var/@name_${var}_${lev}lev_${file_num}.nc"
-		srun --nodes=1 --ntasks=1 --ntasks-per-node=1 --exact --mem=128G \
-			python -u $WORK/lib/process_ctrl.py $var ctrl -f $filepath --lev $lev &
-	done
-	wait
-done
-
+#  clean up ctrl files that aren't needed
+rm ctrl/ctrl.lasagne.@name.03lev.*00.2d.hdf5
 
 # queue next job
 if [ $maxtime -lt $END ] && [ ! -e core ]; then
-	rm ctrl/* # tidy up
 	sbatch $JOB
-else
-	ls ctrl/* | head -n -1 | xargs rm # leave last ctrl file
 fi
-
 
 end=$(date +%s)
 echo End time is `date`
