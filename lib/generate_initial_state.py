@@ -47,6 +47,8 @@ def convert_C(C: DataArray, xVel: DataArray, yVel: DataArray, m: float=1.0, uf: 
 
     print(f'Converting C into equivalent field for m={m}...')
     u = np.hypot(xVel, yVel)
+    u = u.where(u>1, 1) # avoid C_m -> 0 when u -> 0
+
     C_m = C * u **(1.0-m)
     
     if uf is None:
@@ -75,7 +77,7 @@ def extract_data(file: str, lev: int=3, order: int=0) -> Dataset:
     data = {}
     varnames = ['thickness', 'Z_base', 'Cwshelf', 'muCoef', 'xVelb', 'yVelb']
     for var in varnames:
-        print(f'extracting {var}...')
+        print(f'    extracting {var}...')
         x0, y0, field = amrio.readBox2D(amrID, lev, lo, hi, var, order)
         data[var] = (['y', 'x'], field, attrs[var])
     
