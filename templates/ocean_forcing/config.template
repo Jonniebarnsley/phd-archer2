@@ -23,8 +23,8 @@ compute = True
 name = @MODEL
 
 # Input files
-temperatureFileName = @model/data/thetao_annual_@MODEL_@SCENARIO_@REALISATION_199501-229912.nc
-salinityFileName = @model/data/so_annual_@MODEL_@SCENARIO_@REALISATION_199501-229912.nc
+temperatureFileName = @model/data/thetao_annual_@MODEL_@SCENARIO_@REALISATION_199501-230012.nc
+salinityFileName = @model/data/so_annual_@MODEL_@SCENARIO_@REALISATION_199501-230012.nc
 
 # Variable names
 lon = lon

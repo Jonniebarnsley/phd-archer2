@@ -5,8 +5,6 @@
 #SBATCH --error=error/%A.%a.e
 #SBATCH --time=02:00:00
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=1
 #SBATCH --hint=nomultithread
 #SBATCH --distribution=block:block
 #SBATCH --account=n02-NES007229
@@ -28,7 +26,7 @@ if [[ ! -f $CONFIG ]]; then
 fi
 
 # delay to avoid too many jobs accessing the mapping file at once
-DELAY=$(( (($SLURM_ARRAY_TASK_ID - $SLURM_ARRAY_TASK_MIN) % 16) * 10))
+DELAY=$(( (($SLURM_ARRAY_TASK_ID - $SLURM_ARRAY_TASK_MIN) % 32) * 20))
 echo "Waiting for $DELAY seconds..."
 sleep $DELAY
 

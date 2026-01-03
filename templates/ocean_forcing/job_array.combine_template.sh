@@ -28,11 +28,6 @@ if [[ ! -f $CONFIG ]]; then
     exit 1
 fi
 
-# Optional: delay to avoid file system contention
-DELAY=$(( (($SLURM_ARRAY_TASK_ID - 1) % 16) * 10))
-echo "Waiting for $DELAY seconds..."
-sleep $DELAY
-
 # Run ocean forcing
 singularity exec --bind $RUNDIR ocean_forcing.sif \
     python -m ismip6_ocean_forcing "$CONFIG"

@@ -20,7 +20,7 @@ climFolders = ', '.join(['{:04d}'.format(year) for year in
 firstYears = list(range(1995, 2299, 20))
 
 for firstYear in firstYears:
-    lastYear = min(firstYear+19, 2299)
+    lastYear = min(firstYear+19, 2300)
 
     outFolder = '{:04d}-{:04d}'.format(firstYear, lastYear)
     folders = ', '.join(['{:04d}'.format(year) for year in
