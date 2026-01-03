@@ -1,5 +1,6 @@
 from pathlib import Path
 from xarray import Dataset, DataArray
+from mpi4py import MPI # needed to run the MPI routines in amrio on archer2
 
 # NB: amrfile needs the BISICLES AMRfile directory added to PYTHONPATH and the libamrfile directory
 # added to LD_LIBRARY_PATH – see my .bashrc for an example
@@ -58,7 +59,12 @@ class BisiclesFile:
             "Z_base"        : {"units": "m",           "long_name": "Bed elevation"},
             "Z_surface"     : {"units": "m",           "long_name": "Surface elevation"},
             "Cwshelf"       : {"units": "Pa·s·m⁻¹",    "long_name": "Basal friction coefficient"},
-            "muCoef"        : {"units": "unitless",    "long_name": "Viscosity coefficient"}
+            "muCoef"        : {"units": "unitless",    "long_name": "Viscosity coefficient"},
+            "divuh"         : {"units": "kg·m⁻³·s⁻¹",  "long_name": "Flux divergence"},
+            "xVels"         : {"units": "m·yr⁻¹",      "long_name": "Surface X-velocity"},
+            "yVels"         : {"units": "m·yr⁻¹",      "long_name": "Surface Y-velocity"},
+            "xVelb"         : {"units": "m·yr⁻¹",      "long_name": "Basal X-velocity"},
+            "yVelb"         : {"units": "m·yr⁻¹",      "long_name": "Basal Y-velocity"},
             }
 
     def __enter__(self):
@@ -81,7 +87,7 @@ class BisiclesFile:
     def query_time(self) -> float:
         """Query the time from the AMR file"""
         time = amrio.queryTime(self.amrID)
-        return round(time, 2)
+        return round(time, 1)
 
     def domain_corners(self, level: int) -> tuple:
         """Get domain corners for a specific level, cached for efficiency"""
@@ -109,6 +115,10 @@ class BisiclesFile:
         flat_data = {}
         for var in variables:
             variable_name = var.replace("/", "")  # can't have / in netcdf variable names
-            flat_data[variable_name] = self.read_dataarray(var, lev=lev, order=order)
+            try:
+                flat_data[variable_name] = self.read_dataarray(var, lev=lev, order=order)
+            except Exception as e:
+                print(f"File {self.file} does not contain variable '{var}'")
+                continue
         ds = Dataset(flat_data)
         return ds
