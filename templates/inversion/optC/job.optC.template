@@ -26,7 +26,7 @@ export END=300 	# target number of total iterations
 export INCR=110 # increment number of iterations per job
 
 # load python
-module load cray-python	
+module load cray-python/3.9.13.1
 
 # load min and time_elapsed
 source $WORK/lib/utils.sh

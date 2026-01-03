@@ -28,15 +28,15 @@ L1L2.n = @n   # Glen's law exponent
 # when L1L2.layerCoarsening = k
 L1L2.layerCoarsening = 1  # coarsen by factor of 2
 
-# Limit steep slopes during viscosity solve for numerical stability.
-L1L2.additionalVelocitySIAGradSLimit = 1.0e-3   # 1m vertical per 1km horizontal
-L1L2.effectiveViscositySIAGradSLimit = 1.0e-3   # 1m vertical per 1km horizontal
-L1L2.additionalVelocitySIAOnly = true
-
 # BISICLES velocity comes in two components, a base velocity with du/dz = 0
 # and an additional velocity which is depth-dependant.
-# We turn this off for the inverse problem to save computation
-amr.additional_velocity = false # false - inversion, true - forward problem
+amr.additional_velocity = true
+amr.diffusion_treatment = implicit
+
+# Limit steep slopes during viscosity solve for numerical stability.
+L1L2.additionalVelocitySIAOnly = true
+L1L2.additionalVelocitySIAGradSLimit = 1.0e-3   # 1m vertical per 1km horizontal
+L1L2.effectiveViscositySIAGradSLimit = 1.0e-3   # 1m vertical per 1km horizontal
 
 # Rate factor calculated using Arrhenius law
 main.rateFactor = patersonRate  # Cuffey and Paterson (2010)
@@ -75,8 +75,6 @@ inputLevelData.readInternalEnergy = true  # read internal energy instead of temp
 # --- Basal friction ---
 # Linear sliding law for inverse problem
 main.basalFrictionRelation = powerLaw
-BasalFrictionPressureLimitedLaw.coefficient = 1.0
-BasalFrictionPressureLimitedLaw.basalFrictionRelation = powerLaw
 BasalFrictionPowerLaw.m = @m
 
 
@@ -102,18 +100,10 @@ basalFlux.grounded.type = constantFlux
 basalFlux.grounded.flux_value = 0.0
 basalFlux.floating.type = constantFlux
 basalFlux.floating.flux_value = 0.0
-amr.grounding_line_proximity_scale = 1.0e+4
-amr.grounding_line_proximity_calc_type = 1
 
 # During the initialisation, we hold the ice shelves steady by adding a basal mass
 # balance term, bmb = div(u·H) - smb, resulting in dH/dt = 0.
 amr.floating_ice_stable = true
-
-# Can also hold the grounding line steady in a similar way. When ice grounded below
-# sea level drops below the floatation thickness, add an additional smb term which
-# fixes the grounding line position.
-amr.grounding_line_stable = true
-
 
 # --- Calving ---
 # Prevent ice shelf advance by setting ice thickness to 0 in open ocean.
@@ -173,10 +163,6 @@ amr.eliminate_remote_ice_after_regrid = true
 JFNKSolver.eliminateRemoteIceTol = 50.0
 JFNKSolver.eliminateRemoteIceMaxIter = 16
 
-# eliminate fast ice (disabled)
-JFNKSolver.eliminateFastIce = false
-JFNKSolver.eliminateFastIceSpeed = 5.0e+5
-
 
 # --- Time stepping ---
 main.maxTime = 0 # snapshot inversion
@@ -222,6 +208,8 @@ amr.tag_on_grad_velocity = 0  # don't tag based on velocity gradients
 
 amr.tag_grounding_line = 1    # tag based on proximity to grounding line
 amr.grounding_line_tagging_min_vel = 20.0  # min velocity for tagging
+amr.grounding_line_proximity_scale = 1.0e+4
+amr.grounding_line_proximity_calc_type = 1
 
 amr.tag_vel_dx = 1  # tag when velocity * dx exceeds threshold
 amr.vel_dx_tagging_val = 5.0e+5  # threshold
@@ -229,7 +217,7 @@ amr.vel_dx_tagging_val = 5.0e+5  # threshold
 # dx = 4km -> threshold = 125 m/a
 # dx = 2km -> threshold = 250 m/a
 # Can also set different tagging limits for grounded and floating ice.
-amr.vel_dx_finest_level_grounded = 4  # default -1 (no refinement)
+amr.vel_dx_finest_level_grounded = 3  # default -1 (no refinement)
 amr.vel_dx_finest_level_floating = 3  # default -1 (no refinement)
 
 amr.tag_thin_cavity = true # tag thin submarine cavities in attempt to refine pinning points
@@ -244,14 +232,13 @@ amr.verbosity = 5
 # Snapshot inversion: solve inverse problem once at t=0
 
 amr.velocity_solver_type = 6 		# Inverse problem
-amr.velocity_solve_interval = 1 	# hopefully OK when relaxing geometry
+amr.velocity_solve_interval = 1
 amr.evolve_thickness = false		# snapshot inversion
 
 control.velMisfitType = speed 				# match observed speed (not velocity)
-control.minTimeBetweenOptimizations = 0.5	# time in years between (transient) inverse problems
-control.minLevelForOptimization = 0			# Solve for fields at 1 km resolution
+control.minLevelForOptimization = 3
 
-control.dtTypical = 0.04  # Only affects filename suffixes.
+control.dtTypical = 1  # Only affects filename suffixes.
 # e.g. time = 1.0 years, int(1.0 / 0.04) = 25 -> ctrl.@name.000025
 
 control.writeInnerSteps = false
@@ -264,9 +251,9 @@ control.CGsaveStateInterval = 10
 control.xVel.type = LevelData
 control.xVel.fileFormat = /work/n02/shared/jonnieb/data/MEaSUREs_antarctica_v2_bisicles_1km.2d.hdf5
 control.xVel.name = speed
-control.xVel.n = 4
+control.xVel.n = 1
 control.xVel.startTime = 0.0
-control.xVel.timeStep = 100.0
+control.xVel.timeStep = 1.0e+10
 control.xVel.offset = 0
 control.xVel.linearInterp = false
 
@@ -312,6 +299,9 @@ control.CGtol = 1e-10 			# terminate when ||f'(x)||^2 < CGtol^2 * ||f'(x)||^2_in
 # - outer steps: take step along loss surface towards minimum
 control.writeInnerSteps = false
 control.CGmaxIter = 100 		# max CG (outer) iterations per inverse problem
-control.CGsecantMaxIter = 32		# max secant (inner) iterations per CG iteration
+control.CGsecantMaxIter = 8		# max secant (inner) iterations per CG iteration
 control.CGsecantParameter = 1.0e-7
 control.CGlineSearchMethod = 20 # 0 - secant, 1 bisection, 20 new secant
+control.rankRedBlack = true
+control.CGhang = 5
+control.CGtol = 1e-10
