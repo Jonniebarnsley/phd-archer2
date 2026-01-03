@@ -27,7 +27,7 @@ start=$(date +%s)
 echo Start time is `date`
 
 cd $SLURM_SUBMIT_DIR
-python -u $WORK/lib/process_plot.py --lev 0 @PLOTDIR @NCDIR thickness Z_base xVel yVel Z_surface 
+python -u $WORK/lib/process_plot.py --lev 0 @PLOTDIR @NCDIR thickness dThickness/dt xVel yVel Z_base Z_surface 
 
 end=$(date +%s)
 echo End time is `date`
