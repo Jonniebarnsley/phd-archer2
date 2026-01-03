@@ -44,7 +44,7 @@ def ismip_to_bisicles(filepath: Path) -> None:
 
     for cfyear in ds.time.values:
         year = cfyear.year
-        outfile = Path('bisicles_compatible') / f'{model}_{scenario}_thermal_forcing_8km_x_60m_{year}.nc'
+        outfile = Path('bisicles_compatible') / f'thermal_forcing_{model}_{scenario}_8km_{year}.nc'
 
         if outfile.exists():
             continue
