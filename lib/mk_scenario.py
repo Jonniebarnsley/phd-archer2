@@ -1,6 +1,6 @@
 import pandas as pd
+import numpy as np
 import argparse
-from numpy import inf
 from pathlib import Path
 
 def format_value(value) -> str:
@@ -20,7 +20,9 @@ def main(args) -> None:
     templates = Path(args.templates)
     ppe = Path(args.PPE)
     ensemble_path = Path(args.ensemble_path)
-    imax = args.max if args.max else inf
+    scenario = ensemble_path.name
+    imax = args.max if args.max else np.inf
+    imin = args.min if args.min else 0
 
     df = pd.read_csv(ppe)
     columns = df.columns
@@ -29,13 +31,15 @@ def main(args) -> None:
         raise KeyError("PPE requires a 'name' column in order to make directories")
     
     for i, row in df.iterrows():
-        if i + 1 > imax:
+        if i+1 < imin:
+            continue
+        if i+1 > imax:
             break
 
         name = row['name']
         run_dir = ensemble_path / name
 
-        for util in ['ctrl', 'plot', 'chk', 'pout', 'output', 'error']:
+        for util in ['plot', 'chk', 'pout', 'output', 'error']:
             dirpath = run_dir / util
             dirpath.mkdir(parents=True, exist_ok=True)
 
@@ -47,8 +51,13 @@ def main(args) -> None:
                 placeholder = f'@{col}'
                 value = row[col]
                 script = script.replace(placeholder, format_value(value))
+            script = script.replace("@SCENARIO", scenario)
             
+            if 'model' in columns:
+                script = script.replace("@lowermodel", row['model'].lower())
+
             outfile_name = template.name.replace('template', name)
+            outfile_name = outfile_name.replace('scenario', scenario)
             outfile = run_dir / outfile_name
             outfile.write_text(script)
 
@@ -62,6 +71,7 @@ if __name__ == "__main__":
     parser.add_argument("PPE", type=str, help="path to PPE csv")
     parser.add_argument("ensemble_path", type=str, help="destination path for ensemble")
     parser.add_argument("--max", type=int, help="Only make runs up to this index")
+    parser.add_argument("--min", type=int, help="Make runs from this index")
 
     args = parser.parse_args()
     main(args)
