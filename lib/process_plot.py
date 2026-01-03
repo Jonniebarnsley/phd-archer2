@@ -14,12 +14,23 @@ import numpy as np
 import xarray as xr
 from pathlib import Path
 from mpi4py import MPI # needed to run the MPI routines in amrio on archer2
+from dask.diagnostics import ProgressBar
 
 # NB: amrfile and, by extension, BisiclesFile need the BISICLES AMRfile directory added to PYTHONPATH 
 # and the libamrfile directory added to LD_LIBRARY_PATH – see my .bashrc for an example
 from bisiclesfile import BisiclesFile
 
 class Processor:
+    """
+    Processor class to extract data from BISICLES plot files into a netcdf format. Uses amrfile python
+    package via the BisiclesFile class to read all hdf5 files in a given plot directory and extract
+    specified variables at a given level of refinement. Returns a single xarray Dataset concatenated
+    along the time dimension and saves to a given filepath.
+    
+    :variables: List of variable names to extract, e.g. ['thickness', 'Z_base']
+    :lev: Level of refinement to extract (default=0)
+    :order: Interpolation order (0=piecewise constant, 1=linear), default=0
+    """
 
     def __init__(
         self, 
@@ -49,7 +60,8 @@ class Processor:
     def batch_time(self, files: list[Path]):
         """Concatenate all files along the time dimension"""
 
-        batched = None
+        times = []
+        slices = []
         for i, file in enumerate(files, 1):
             print(f"({i}/{len(files)}) {file.name}")
 
@@ -58,20 +70,16 @@ class Processor:
                 time = bfile.query_time()
 
             # Sometimes, multiple plotfiles can be written with times e.g. 200.0000 and 200.0001.
-            # We skip files with times that are very close to the last time in the batched dataset.
-            if batched is not None and np.isclose(batched.time.values[-1], time, atol=0.5):
-                print(f"Time {time} already exists in dataset. Skipping file {file.name}.")
+            # We skip files with times that are very close to the last time.
+            if times and np.isclose(times[-1], time, atol=0.05):
+                print(f"A time close to {time} already exists in dataset. Skipping file {file.name}.")
                 continue
 
-            ds = ds.expand_dims('time')
-            ds = ds.assign_coords(time=[round(time, 0)])
-
-            if batched is None:
-                batched = ds
-            else:
-                batched = xr.concat([batched, ds], dim='time')
-            del ds
-
+            times.append(time)
+            slices.append(ds)
+            
+        batched = xr.concat(slices, dim='time')
+        batched = batched.assign_coords(time=times)
         return batched
 
     def process_plot(self, plot_dir: Path, outfile: Path) -> None:
@@ -91,9 +99,13 @@ class Processor:
         for var in ds.data_vars:
             ds[var].encoding.update(self.encoding_specs)
 
+        print("Chunking dataset for dask...")
+        tc, yx, xc = self.encoding_specs['chunksizes']
+        ds = ds.chunk({'time': tc, 'y': yx, 'x': xc})
         print(f"Generating {outfile}...")
         try:
-            ds.to_netcdf(outfile)
+            with ProgressBar():
+                ds.to_netcdf(outfile)
             print(f"Successfully created {outfile}")
         except Exception as e:
             print(f"Error generating {outfile}: {e}")
