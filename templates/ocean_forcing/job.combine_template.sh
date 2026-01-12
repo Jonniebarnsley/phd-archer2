@@ -11,7 +11,7 @@
 #SBATCH --distribution=block:block
 #SBATCH --account=n02-NES007229
 #SBATCH --partition=standard
-#SBATCH --qos=taskfarm
+#SBATCH --qos=short
 
 export OMP_NUM_THREADS=1 # Set number of threads to 1
 export HDF5_USE_FILE_LOCKING=FALSE
