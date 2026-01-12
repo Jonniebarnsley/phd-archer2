@@ -28,9 +28,7 @@ L1L2.n = @n   # Glen's law exponent
 # when L1L2.layerCoarsening = k
 L1L2.layerCoarsening = 1  # coarsen by factor of 2
 
-# Try to avoid high-velocity single-cell crumple zones
-amr.additional_velocity = true
-amr.diffusion_treatment = implicit
+amr.additional_velocity = false
 L1L2.additionalVelocitySIAOnly = true
 L1L2.additionalVelocitySIAGradSLimit = 1.0e-3   # 1m vertical per 1km horizontal
 L1L2.effectiveViscositySIAGradSLimit = 1.0e-3   # 1m vertical per 1km horizontal
@@ -112,7 +110,7 @@ surfaceFlux.y.n = 294
 surfaceFlux.y.timeStep = 1.0
 surfaceFlux.y.startTime = 2007
 surfaceFlux.y.offset = 2007
-surfaceFlux.y.fileFormat = /work/n02/shared/jonnieb/data/smb/@SCENARIO/@model/smb_anomaly_@model_@SCENARIO_%04d.2d.hdf5
+surfaceFlux.y.fileFormat = /work/n02/shared/jonnieb/data/smb/@SCENARIO/@model/smb_anomaly_@model_@SCENARIO_8km_%04d.2d.hdf5
 surfaceFlux.y.name = smb_anomaly
 
 # --- Basal flux ---
@@ -174,17 +172,16 @@ amr.initial_velocity_guess_solver_type = 1 # JFNk
 
 #JFNK parameters
 JFNKSolver.vtopSafety = 0.95
-JFNKSolver.minPicardIterations = 100
+JFNKSolver.minPicardIterations = 6
 JFNKSolver.maxIter = 2
 JFNKSolver.maxIter_init = 16
 JFNKSolver.absTol = 1.0e+5
 JFNKSolver.relTol = 1.0e-3
-JFNKSolver.solverType = 0 # Relax solver
-JFNKSolver.solverType = 4 # PETSc solver
+JFNKSolver.solverType = 0 # 0 - Relax solver, 4 - PetSc solver
 JFNKSolver.RelaxRelTol = 1.0e-3
-JFNKSolver.RelaxHang = 0.95
-JFNKSolver.maxRelaxIter = 20
-JFNKSolver.normType = 2
+JFNKSolver.RelaxHang = 0.99
+JFNKSolver.maxRelaxIter = 15
+JFNKSolver.normType = 0
 JFNKSolver.verbosity = 5
 JFNKSolver.vtopRelaxTol = 0.005
 JFNKSolver.vtopRelaxMinIter = 8
@@ -211,11 +208,11 @@ velocity_rhs.max_rhs_dx = 1.0e+9 # limit steep slopes
 amr.eliminate_remote_ice = true
 amr.eliminate_remote_ice_max_iter = 16
 amr.eliminate_remote_ice_tol = 2.0  # min thickness for ice to be considered connected
-amr.eliminate_remote_ice_after_regrid = true
+amr.max_advection_speed = 2.0e+4
 
 # --- Eliminate fast ice ---
 # Delete ice that travels faster than a given threshold
-JFNKSolver.eliminateFastIce = true
+JFNKSolver.eliminateFastIce = false # turn off for now
 JFNKSolver.eliminateFastIceEdgeOnly = false
 JFNKSolver.eliminateFastIceSpeed = 2.5e+4 # m a-1 (yields min timestep of ~0.01 yr)
 
@@ -259,7 +256,7 @@ amr.nestingRadius = 1    	# proper nesting radius required
 amr.tags_grow = 4        	# amount to buffer tags
 amr.tagSubsetBoxesFile = /work/n02/shared/jonnieb/data/tagSubsetBoxes.txt
 
-amr.interpolate_zb = 0 		# *do not* go back to the IBC to regrid geometry
+amr.interpolate_zb = 1 		# *do not* go back to the IBC to regrid geometry
 amr.max_box_size = 64     # largest box length allowed
 
 # --- AMR tagging ---
