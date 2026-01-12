@@ -122,3 +122,17 @@ class BisiclesFile:
                 continue
         ds = Dataset(flat_data)
         return ds
+
+def _system(cmd):
+    import os
+    print(cmd)
+    os.system(cmd)
+
+def nctoamr(ncfile: Path, h5file: Path, variables: list, lev: int=0) -> None:
+    """Convert a netcdf file into a BISICLES AMR HDF5 file"""
+    
+    if not ncfile.exists():
+        raise FileNotFoundError(f"Input netcdf file not found: {ncfile}")
+    
+    print(f"Converting {ncfile} to BISICLES AMR HDF5 format at level {lev}...")
+    _system('nctoamr {} {} {}'.format(ncfile, h5file, " ".join(variables)))
