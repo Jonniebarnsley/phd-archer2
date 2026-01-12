@@ -6,7 +6,7 @@
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=128
 #SBATCH --time=24:00:00
-#SBATCH --qos=taskfarm
+#SBATCH --qos=standard
 #SBATCH --account=n02-NES007229
 #SBATCH --hint=nomultithread
 #SBATCH --distribution=block:block
@@ -23,7 +23,7 @@ export BISINPT=inputs.lasagne.@name
 export JOB=job.lasagne.@name
 
 # set constants
-export INCR=1	# time increment per job (in years)
+export INCR=3	# time increment per job (in years)
 export END=15	# target end year of simulation
 
 # load python
