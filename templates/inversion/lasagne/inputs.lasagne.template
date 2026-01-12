@@ -154,14 +154,13 @@ velocity_rhs.max_rhs_dx = 1.0e+9 # roughly corresponds to 100m ice cliff
 amr.eliminate_remote_ice = true
 amr.eliminate_remote_ice_max_iter = 16
 amr.eliminate_remote_ice_tol = 2.0  # min thickness for ice to be considered connected
-amr.eliminate_remote_ice_after_regrid = true
-
+amr.max_advection_speed = 2.0e+4
 
 # --- Eliminate fast ice ---
 # Delete ice that travels faster than a given threshold
 JFNKSolver.eliminateFastIce = true
 JFNKSolver.eliminateFastIceEdgeOnly = false
-JFNKSolver.eliminateFastIceSpeed = 2.5e+4 # m a-1 (yields min timestep of ~0.01 yr)
+JFNKSolver.eliminateFastIceSpeed = 1.0e+4 # m a-1 (yields min timestep of ~0.01 yr)
 
 # --- Time stepping ---
 main.maxTime = 0  # increment this in job script
@@ -197,7 +196,7 @@ amr.nestingRadius = 1    	  # proper nesting radius required
 amr.tags_grow = 4        	  # pad tagged regions with this many cells
 amr.tagSubsetBoxesFile = /work/n02/shared/jonnieb/data/tagSubsetBoxes.txt
 
-amr.interpolate_zb = 0 		  # don't go back to the IBC to regrid geometry
+amr.interpolate_zb = 1 		  # don't go back to the IBC to regrid geometry
 amr.max_box_size = 64       # largest box length allowed
 
 
