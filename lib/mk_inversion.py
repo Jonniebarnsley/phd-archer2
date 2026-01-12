@@ -21,6 +21,7 @@ def main(args) -> None:
     ppe = Path(args.PPE)
     ensemble_path = Path(args.ensemble_path)
     imax = args.max if args.max else inf
+    imin = args.min if args.min else 0
 
     df = pd.read_csv(ppe)
     columns = df.columns
@@ -29,6 +30,8 @@ def main(args) -> None:
         raise KeyError("PPE requires a 'name' column in order to make directories")
     
     for i, row in df.iterrows():
+        if i + 1 < imin:
+            continue
         if i + 1 > imax:
             break
 
@@ -61,6 +64,7 @@ if __name__ == "__main__":
     parser.add_argument("templates", type=str, help="path to templates directory")
     parser.add_argument("PPE", type=str, help="path to PPE csv")
     parser.add_argument("ensemble_path", type=str, help="destination path for ensemble")
+    parser.add_argument("--min", type=int, help="Only make runs from this index")
     parser.add_argument("--max", type=int, help="Only make runs up to this index")
 
     args = parser.parse_args()
