@@ -4,8 +4,9 @@ import numpy as np
 from mpi4py import MPI
 from xarray import Dataset, DataArray
 
-# import amrfile – requires PYTHONPATH and LD_LIBRARY_PATH correctly set
-from amrfile import io as amrio
+# NB: amrfile and, by extension, BisiclesFile need the BISICLES AMRfile directory added to PYTHONPATH 
+# and the libamrfile directory added to LD_LIBRARY_PATH – see my .bashrc for an example
+from bisiclesfile import BisiclesFile
 
 def convert_C(C: DataArray, xVel: DataArray, yVel: DataArray, m: float=1.0, uf: float=None) -> DataArray:
 
@@ -24,6 +25,9 @@ def convert_C(C: DataArray, xVel: DataArray, yVel: DataArray, m: float=1.0, uf: 
     C * u = C_m * |u|^(m-1) * u     
     C_m = C * |u|^(1-m)
 
+    In order to avoid areas of no slip where u = 0 causing C_m -> 0, we set a
+    minimum sliding speed of 1 m·a⁻¹ when calculating the conversion factor.
+    
     An optional parameter uf (fast sliding speed) may also be set so that C_m is
     converted into the field C_f for a regularised Coulomb sliding law like that of 
     Joughin et al (2019):
@@ -58,57 +62,45 @@ def convert_C(C: DataArray, xVel: DataArray, yVel: DataArray, m: float=1.0, uf: 
         C_f = C_m * (u/uf + 1)**m
         return C_f
 
-def extract_data(file: str, lev: int=3, order: int=0) -> Dataset:
-   
-    attrs = {
-            'thickness' : {'long_name': 'Ice thickness', 'units': 'm'},
-            'Z_base'    : {'long_name': 'Bed elevation', 'units': 'm'},
-            'Cwshelf'   : {'long_name': 'Weertman friction coefficient (m=1)', 'units': 'Pa·m⁻¹·s'},
-            'muCoef'    : {'long_name': 'Viscosity coefficient'},
-            'xVelb'     : {'long_name': 'Basal x-velocity', 'units': 'm/a'},
-            'yVelb'     : {'long_name': 'Basal y-velocity', 'units': 'm/a'}
-            }
-            
-    # load hdf5 file
-    amrID = amrio.load(file)
-    lo, hi = amrio.queryDomainCorners(amrID, lev)
+def generate_initial_state(infile: str, m: float=1.0, uf: float=None) -> Dataset:
+
+    required_vars = ['thickness', 'Z_base', 'Cwshelf', 'muCoef', 'xVelb', 'yVelb']
+    with BisiclesFile(infile) as bfile:
+        ds = bfile.read_dataset(required_vars, lev=3)
     
-    # read data
-    data = {}
-    varnames = ['thickness', 'Z_base', 'Cwshelf', 'muCoef', 'xVelb', 'yVelb']
-    for var in varnames:
-        print(f'    extracting {var}...')
-        x0, y0, field = amrio.readBox2D(amrID, lev, lo, hi, var, order)
-        data[var] = (['y', 'x'], field, attrs[var])
-    
-    # make dataset
-    ds = Dataset(
-            data,
-            coords = {'x': x0, 'y': y0},
-            )
-
-    amrio.free(amrID)
-    return ds
-
-def main(args) -> None:
-
-    infile = args.infile
-    outfile = args.outfile
-    lev = args.lev  # default 3
-    m = args.m if args.m else 1
-    uf = args.uf if args.uf else None
-
-    ds = extract_data(infile, lev=lev)
-    
-    if m!=1 or uf is not None:
+    if m!=1.0 or uf is not None:
         ds['C_m'] = convert_C(ds.Cwshelf, ds.xVelb, ds.yVelb, m=m, uf=uf)
     else:
         ds['C_m'] = ds['Cwshelf']
     
     ds['C_m'].attrs['long_name'] = f'Weertman coefficient (m={m}, uf={uf})'
-    ds['C_m'].attrs['units'] = 'Pa·m⁻¹·s'  # or appropriate
+    ds['C_m'].attrs['units'] = 'Pa·m⁻¹·s'
+    return ds
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Process inputs and options")
+
+    # add arguments
+    parser.add_argument("infile", type=str, help="path to ctrl.*.hdf5 file")
+    parser.add_argument("outfile", type=str, help="path to output netcdf")
+
+    # add optional arguments
+    parser.add_argument("-m", type=float, default=1.0, help="value of Weertman exponent")
+    parser.add_argument("-u", "--uf", type=float, help="fast sliding speed for regularised Coulomb sliding")
+    parser.add_argument("--lev", type=int, default=3, help="max level of refinement")
+    return parser
+
+def main() -> None:
+
+    parser = build_parser()
+    args = parser.parse_args()
+    try:
+        ds = generate_initial_state(args.infile, m = args.m, uf = args.uf)
+    except KeyboardInterrupt:
+        print("Interrupted by user")
+        return
     
-    print(f'saving to {outfile}...')
+    print(f'saving to {args.outfile}...')
     encoding = {
         var: {
             'zlib': True,          # enables compression
@@ -118,27 +110,8 @@ def main(args) -> None:
         }
         for var in ds.data_vars
     }
-    ds.to_netcdf(outfile, encoding=encoding)
+    ds.to_netcdf(args.outfile, encoding=encoding)
     print('done')
 
-
 if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser(description="Process inputs and options")
-
-    # add arguments
-    parser.add_argument("infile", type=str, help="path to ctrl.*.hdf5 file")
-    parser.add_argument("outfile", type=str, help="path to output netcdf")
-
-    # add optional arguments
-    parser.add_argument("-m", type=float, help="value of Weertman exponent")
-    parser.add_argument("--uf", type=float, help="fast sliding speed for regularised Coulomb sliding")
-    parser.add_argument("--lev", type=int, default=3, help="max level of refinement")
-
-    args = parser.parse_args()
-
-    try:
-        main(args)
-    except KeyboardInterrupt:
-        sys.exit('\nInterrupted by user')
-
+    main()
