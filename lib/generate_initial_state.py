@@ -49,7 +49,7 @@ def convert_C(C: DataArray, xVel: DataArray, yVel: DataArray, m: float=1.0, uf: 
     C_f = C_m * [|u|/uf + 1]^m
     """
 
-    print(f'Converting C into equivalent field for m={m}...')
+    print(f'    Converting C into equivalent field for m={m}...')
     u = np.hypot(xVel, yVel)
     u = u.where(u>1, 1) # avoid C_m -> 0 when u -> 0
 
@@ -58,7 +58,7 @@ def convert_C(C: DataArray, xVel: DataArray, yVel: DataArray, m: float=1.0, uf: 
     if uf is None:
         return C_m
     else:
-        print(f'Applying additional factor for fast sliding speed uf={uf} ma-1...')
+        print(f'    Applying additional factor for fast sliding speed uf={uf} ma-1...')
         C_f = C_m * (u/uf + 1)**m
         return C_f
 
@@ -100,7 +100,7 @@ def main() -> None:
         print("Interrupted by user")
         return
     
-    print(f'saving to {args.outfile}...')
+    print(f'    saving to {args.outfile}...')
     encoding = {
         var: {
             'zlib': True,          # enables compression
@@ -111,7 +111,6 @@ def main() -> None:
         for var in ds.data_vars
     }
     ds.to_netcdf(args.outfile, encoding=encoding)
-    print('done')
 
 if __name__ == "__main__":
     main()
