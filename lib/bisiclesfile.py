@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Union
 from xarray import Dataset, DataArray
 from mpi4py import MPI # needed to run the MPI routines in amrio on archer2
 
@@ -27,12 +28,12 @@ class BisiclesFile:
         file: Path to the BISICLES HDF5 file to read
     """
 
-    def __init__(self, file: Path):
-        self.file = file
+    def __init__(self, file: Union[Path, str]):
+        self.file = Path(file)
         self._amrID = None
         self._domain_corners = {}  # Cache domain corners by level
 
-        if not self.exists():
+        if not self.file.exists():
             raise FileNotFoundError(f"BISICLES file not found: {self.file}")
 
         if self.file.suffix != '.hdf5':
